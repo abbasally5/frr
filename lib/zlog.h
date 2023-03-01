@@ -248,10 +248,10 @@ extern struct zlog_target *zlog_target_replace(struct zlog_target *oldzt,
 	rcu_free(mt, zt, rcu_head)
 
 extern void zlog_init(const char *progname, const char *protoname,
-		      unsigned short instance, uid_t uid, gid_t gid);
+		      unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir);
 DECLARE_HOOK(zlog_init, (const char *progname, const char *protoname,
-			 unsigned short instance, uid_t uid, gid_t gid),
-			(progname, protoname, instance, uid, gid));
+			 unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir),
+			(progname, protoname, instance, uid, gid, tmpdir));
 
 extern void zlog_fini(void);
 DECLARE_KOOH(zlog_fini, (), ());

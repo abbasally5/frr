@@ -320,7 +320,7 @@ main(int argc, char *argv[])
 		zprivs_get_ids(&ids);
 
 		zlog_init(ldpd_di.progname, "LDP", 0,
-			  ids.uid_normal, ids.gid_normal);
+			  ids.uid_normal, ids.gid_normal, ldpd_di.tmp_path);
 	}
 	if (lflag)
 		lde();

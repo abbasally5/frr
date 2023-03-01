@@ -96,6 +96,7 @@ static void opt_extend(const struct optspec *os)
 #define OPTION_LOGGING   1007
 #define OPTION_LIMIT_FDS 1008
 #define OPTION_SCRIPTDIR 1009
+#define OPTION_TMPDIR    1010
 
 static const struct option lo_always[] = {
 	{"help", no_argument, NULL, 'h'},
@@ -112,6 +113,7 @@ static const struct option lo_always[] = {
 	{"log-level", required_argument, NULL, OPTION_LOGLEVEL},
 	{"command-log-always", no_argument, NULL, OPTION_LOGGING},
 	{"limit-fds", required_argument, NULL, OPTION_LIMIT_FDS},
+	{"tmpdir", optional_argument,  NULL, OPTION_TMPDIR},
 	{NULL}};
 static const struct optspec os_always = {
 	"hvdM:F:N:o:",
@@ -127,7 +129,8 @@ static const struct optspec os_always = {
 	"      --scriptdir    Override scripts directory\n"
 	"      --log          Set Logging to stdout, syslog, or file:<name>\n"
 	"      --log-level    Set Logging Level to use, debug, info, warn, etc\n"
-	"      --limit-fds    Limit number of fds supported\n",
+	"      --limit-fds    Limit number of fds supported\n"
+	"      --tmpdir       Override tmp base directory\n",
 	lo_always};
 
 
@@ -590,6 +593,14 @@ static int frr_opt(int opt)
 		}
 		di->script_path = optarg;
 		break;
+	case OPTION_TMPDIR:
+		if (di->tmp_path) {
+			fprintf(stderr, "--tmpdir option specified more than once!\n");
+			errors++;
+			break;
+		}
+		di->tmp_path = optarg;
+		break;
 	case OPTION_TCLI:
 		di->cli_mode = FRR_CLI_TRANSACTIONAL;
 		break;
@@ -733,7 +744,7 @@ struct thread_master *frr_init(void)
 	zprivs_get_ids(&ids);
 
 	zlog_init(di->progname, di->logname, di->instance,
-		  ids.uid_normal, ids.gid_normal);
+		  ids.uid_normal, ids.gid_normal, di->tmp_path);
 
 	while ((log_arg = log_args_pop(di->early_logging))) {
 		command_setup_early_logging(log_arg->target,

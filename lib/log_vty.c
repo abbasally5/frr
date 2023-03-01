@@ -853,7 +853,7 @@ void log_config_write(struct vty *vty)
 }
 
 static int log_vty_init(const char *progname, const char *protoname,
-			 unsigned short instance, uid_t uid, gid_t gid)
+			 unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir)
 {
 	zlog_progname = progname;
 	zlog_protoname = protoname;

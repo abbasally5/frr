@@ -80,6 +80,7 @@ struct frr_daemon_info {
 	const char *vty_path;
 	const char *module_path;
 	const char *script_path;
+	const char *tmp_path;
 
 	const char *pathspace;
 	bool zpathspace;

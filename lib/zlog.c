@@ -54,8 +54,8 @@ DEFINE_MTYPE_STATIC(LIB, LOG_MESSAGE,  "log message");
 DEFINE_MTYPE_STATIC(LIB, LOG_TLSBUF,   "log thread-local buffer");
 
 DEFINE_HOOK(zlog_init, (const char *progname, const char *protoname,
-			unsigned short instance, uid_t uid, gid_t gid),
-		       (progname, protoname, instance, uid, gid));
+			unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir),
+		       (progname, protoname, instance, uid, gid, tmpdir));
 DEFINE_KOOH(zlog_fini, (), ());
 DEFINE_HOOK(zlog_aux_init, (const char *prefix, int prio_min),
 			   (prefix, prio_min));
@@ -981,34 +981,35 @@ void zlog_aux_init(const char *prefix, int prio_min)
 }
 
 void zlog_init(const char *progname, const char *protoname,
-	       unsigned short instance, uid_t uid, gid_t gid)
+	       unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir)
 {
 	zlog_uid = uid;
 	zlog_gid = gid;
 	zlog_instance = instance;
+	const char *tmp_base_dir = tmpdir ? tmpdir : TMPBASEDIR;
 
 	if (instance) {
 		snprintfrr(zlog_tmpdir, sizeof(zlog_tmpdir), "%s/%s-%d.%ld",
-			   TMPBASEDIR, progname, instance, (long)getpid());
+			   tmp_base_dir, progname, instance, (long)getpid());
 
 		zlog_prefixsz = snprintfrr(zlog_prefix, sizeof(zlog_prefix),
 					   "%s[%d]: ", protoname, instance);
 	} else {
 		snprintfrr(zlog_tmpdir, sizeof(zlog_tmpdir), "%s/%s.%ld",
-			   TMPBASEDIR, progname, (long)getpid());
+			   tmp_base_dir, progname, (long)getpid());
 
 		zlog_prefixsz = snprintfrr(zlog_prefix, sizeof(zlog_prefix),
 					   "%s: ", protoname);
 	}
 
-	if (mkdir(TMPBASEDIR, 0700) != 0) {
+	if (mkdir(tmp_base_dir, 0700) != 0) {
 		if (errno != EEXIST) {
 			zlog_err("failed to mkdir \"%s\": %s",
-				 TMPBASEDIR, strerror(errno));
+				 tmp_base_dir, strerror(errno));
 			goto out_warn;
 		}
 	}
-	chown(TMPBASEDIR, zlog_uid, zlog_gid);
+	chown(tmp_base_dir, zlog_uid, zlog_gid);
 
 	if (mkdir(zlog_tmpdir, 0700) != 0) {
 		zlog_err("failed to mkdir \"%s\": %s",
@@ -1035,12 +1036,12 @@ void zlog_init(const char *progname, const char *protoname,
 	chown(zlog_tmpdir, zlog_uid, zlog_gid);
 #endif
 
-	hook_call(zlog_init, progname, protoname, instance, uid, gid);
+	hook_call(zlog_init, progname, protoname, instance, uid, gid, tmp_base_dir);
 	return;
 
 out_warn:
 	zlog_err("crashlog and per-thread log buffering unavailable!");
-	hook_call(zlog_init, progname, protoname, instance, uid, gid);
+	hook_call(zlog_init, progname, protoname, instance, uid, gid, tmp_base_dir);
 }
 
 void zlog_fini(void)
