@@ -10,4 +10,5 @@ exec $SNAP/sbin/ripd \
     --pid_file $SNAP_DATA/ripd.pid \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA
+    --tmpdir $SNAP_DATA
 

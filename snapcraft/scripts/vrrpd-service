@@ -10,4 +10,5 @@ exec $SNAP/sbin/vrrpd \
     --pid_file $SNAP_DATA/vrrpd.pid \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA
+    --tmpdir $SNAP_DATA
 

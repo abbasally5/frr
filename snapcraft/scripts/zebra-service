@@ -18,3 +18,4 @@ exec $SNAP/sbin/zebra \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA \
     --moduledir $SNAP/lib/frr/modules $EXTRA_OPTIONS
+    --tmpdir $SNAP_DATA

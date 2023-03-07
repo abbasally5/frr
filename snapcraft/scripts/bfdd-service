@@ -11,4 +11,5 @@ exec $SNAP/sbin/bfdd \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA \
     --bfdctl $SNAP_DATA/bfdd.sock
+    --tmpdir $SNAP_DATA
 

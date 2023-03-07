@@ -11,4 +11,5 @@ exec $SNAP/sbin/ldpd \
     --socket $SNAP_DATA/zsock \
     --ctl_socket $SNAP_DATA \
     --vty_socket $SNAP_DATA
+    --tmpdir $SNAP_DATA
 

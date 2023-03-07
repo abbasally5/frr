@@ -10,4 +10,5 @@ exec $SNAP/sbin/pimd \
     --pid_file $SNAP_DATA/pimd.pid \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA
+    --tmpdir $SNAP_DATA
 
