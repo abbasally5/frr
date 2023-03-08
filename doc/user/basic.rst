@@ -802,6 +802,11 @@ These options apply to all |PACKAGE_NAME| daemons.
    by the FRR daemons. By default, the daemons use the system ulimit
    value.
 
+.. option:: --tmpdir </path/to/desired/tmp/dir>
+
+   Override the tmp directory to be used by frr for logging. Default 
+   location is /var/tmp/frr.
+
 .. _loadable-module-support:
 
 Loadable Module Support

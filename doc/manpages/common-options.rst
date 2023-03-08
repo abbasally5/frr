@@ -75,6 +75,9 @@ The following options control configuration and file system locations for frr pr
 
    ip netns exec namespace <daemon> -N namespace
 
+.. option:: --tmpdir tmpdir-path
+
+   Override the path of the tmp dir used by frr for logging. The default is /var/tmp/frr. The value of this option must be the same across all daemons.
 
 PROCESS CREDENTIALS
 -------------------
