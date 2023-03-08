@@ -368,7 +368,7 @@ static int zlt_aux_init(const char *prefix, int prio_min)
 }
 
 static int zlt_init(const char *progname, const char *protoname,
-		     unsigned short instance, uid_t uid, gid_t gid)
+		     unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir)
 {
 	openlog(progname, LOG_CONS | LOG_NDELAY | LOG_PID, LOG_DAEMON);
 	return 0;
