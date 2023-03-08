@@ -17,5 +17,5 @@ exec $SNAP/sbin/zebra \
     --pid_file $SNAP_DATA/zebra.pid \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA \
-    --moduledir $SNAP/lib/frr/modules $EXTRA_OPTIONS
+    --moduledir $SNAP/lib/frr/modules $EXTRA_OPTIONS \
     --tmpdir $SNAP_DATA

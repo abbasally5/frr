@@ -16,6 +16,6 @@ exec $SNAP/sbin/bgpd \
     --pid_file $SNAP_DATA/bgpd.pid \
     --socket $SNAP_DATA/zsock \
     --vty_socket $SNAP_DATA \
-    --moduledir $SNAP/lib/frr/modules $EXTRA_OPTIONS
+    --moduledir $SNAP/lib/frr/modules $EXTRA_OPTIONS \
     --tmpdir $SNAP_DATA
 

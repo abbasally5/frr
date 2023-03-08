@@ -16,6 +16,6 @@ exec $SNAP/sbin/staticd \
     -f $SNAP_DATA/staticd.conf \
     --pid_file $SNAP_DATA/staticd.pid \
     --socket $SNAP_DATA/zsock \
-    --vty_socket $SNAP_DATA
+    --vty_socket $SNAP_DATA \
     --tmpdir $SNAP_DATA
 

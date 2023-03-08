@@ -9,6 +9,6 @@ exec $SNAP/sbin/isisd \
     -f $SNAP_DATA/isisd.conf \
     --pid_file $SNAP_DATA/isisd.pid \
     --socket $SNAP_DATA/zsock \
-    --vty_socket $SNAP_DATA
+    --vty_socket $SNAP_DATA \
     --tmpdir $SNAP_DATA
 

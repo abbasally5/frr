@@ -9,6 +9,6 @@ exec $SNAP/sbin/ripd \
     -f $SNAP_DATA/ripd.conf \
     --pid_file $SNAP_DATA/ripd.pid \
     --socket $SNAP_DATA/zsock \
-    --vty_socket $SNAP_DATA
+    --vty_socket $SNAP_DATA \
     --tmpdir $SNAP_DATA
 
