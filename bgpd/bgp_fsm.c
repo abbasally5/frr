@@ -435,12 +435,16 @@ void bgp_timer_set(struct peer *peer)
 		THREAD_OFF(peer->t_start);
 		THREAD_OFF(peer->t_connect);
 
-		/* If the negotiated Hold Time value is zero, then the Hold Time
-		   timer and KeepAlive timers are not started. */
-		if (peer->v_holdtime == 0) {
-			THREAD_OFF(peer->t_holdtime);
+		/*
+		 * If the negotiated Hold Time value is zero, then the Hold Time
+		 * timer and KeepAlive timers are not started.
+		 * Additionally if a different hold timer has been negotiated
+		 * than we must stop then start the timer again
+		 */
+		THREAD_OFF(peer->t_holdtime);
+		if (peer->v_holdtime == 0)
 			bgp_keepalives_off(peer);
-		} else {
+		else {
 			BGP_TIMER_ON(peer->t_holdtime, bgp_holdtime_timer,
 				     peer->v_holdtime);
 			bgp_keepalives_on(peer);
@@ -456,12 +460,16 @@ void bgp_timer_set(struct peer *peer)
 		THREAD_OFF(peer->t_connect);
 		THREAD_OFF(peer->t_delayopen);
 
-		/* Same as OpenConfirm, if holdtime is zero then both holdtime
-		   and keepalive must be turned off. */
-		if (peer->v_holdtime == 0) {
-			THREAD_OFF(peer->t_holdtime);
+		/*
+		 * Same as OpenConfirm, if holdtime is zero then both holdtime
+		 * and keepalive must be turned off.
+		 * Additionally if a different hold timer has been negotiated
+		 * then we must stop then start the timer again
+		 */
+		THREAD_OFF(peer->t_holdtime);
+		if (peer->v_holdtime == 0)
 			bgp_keepalives_off(peer);
-		} else {
+		else {
 			BGP_TIMER_ON(peer->t_holdtime, bgp_holdtime_timer,
 				     peer->v_holdtime);
 			bgp_keepalives_on(peer);
@@ -2047,7 +2055,7 @@ static int bgp_start_deferral_timer(struct bgp *bgp, afi_t afi, safi_t safi,
 	if (gr_info->af_enabled[afi][safi] == false) {
 		gr_info->af_enabled[afi][safi] = true;
 		/* Send message to RIB */
-		bgp_zebra_update(afi, safi, bgp->vrf_id,
+		bgp_zebra_update(bgp, afi, safi,
 				 ZEBRA_CLIENT_ROUTE_UPDATE_PENDING);
 	}
 	if (BGP_DEBUG(update, UPDATE_OUT))
@@ -2194,7 +2202,7 @@ static enum bgp_fsm_state_progress bgp_establish(struct peer *peer)
 				/* Send route processing complete
 				   message to RIB */
 				bgp_zebra_update(
-					afi, safi, peer->bgp->vrf_id,
+					peer->bgp, afi, safi,
 					ZEBRA_CLIENT_ROUTE_UPDATE_COMPLETE);
 		}
 	} else {
@@ -2206,7 +2214,7 @@ static enum bgp_fsm_state_progress bgp_establish(struct peer *peer)
 				/* Send route processing complete
 				   message to RIB */
 				bgp_zebra_update(
-					afi, safi, peer->bgp->vrf_id,
+					peer->bgp, afi, safi,
 					ZEBRA_CLIENT_ROUTE_UPDATE_COMPLETE);
 		}
 	}
@@ -2817,7 +2825,7 @@ const char *print_peer_gr_cmd(enum peer_gr_command pr_gr_cmd)
 
 const char *print_global_gr_mode(enum global_mode gl_mode)
 {
-	const char *global_gr_mode = NULL;
+	const char *global_gr_mode = "???";
 
 	switch (gl_mode) {
 	case GLOBAL_HELPER:

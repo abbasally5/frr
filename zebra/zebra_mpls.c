@@ -3730,14 +3730,20 @@ void zebra_mpls_print_lsp(struct vty *vty, struct zebra_vrf *zvrf,
 
 	/* Lookup table. */
 	lsp_table = zvrf->lsp_table;
-	if (!lsp_table)
+	if (!lsp_table) {
+		if (use_json)
+			vty_out(vty, "{}\n");
 		return;
+	}
 
 	/* If entry is not present, exit. */
 	tmp_ile.in_label = label;
 	lsp = hash_lookup(lsp_table, &tmp_ile);
-	if (!lsp)
+	if (!lsp) {
+		if (use_json)
+			vty_out(vty, "{}\n");
 		return;
+	}
 
 	if (use_json) {
 		json = lsp_json(lsp);
@@ -4052,10 +4058,8 @@ static void lsp_table_free(void *p)
 void zebra_mpls_close_tables(struct zebra_vrf *zvrf)
 {
 	hash_iterate(zvrf->lsp_table, lsp_uninstall_from_kernel, NULL);
-	hash_clean(zvrf->lsp_table, lsp_table_free);
-	hash_free(zvrf->lsp_table);
-	hash_clean(zvrf->slsp_table, lsp_table_free);
-	hash_free(zvrf->slsp_table);
+	hash_clean_and_free(&zvrf->lsp_table, lsp_table_free);
+	hash_clean_and_free(&zvrf->slsp_table, lsp_table_free);
 	route_table_finish(zvrf->fec_table[AFI_IP]);
 	route_table_finish(zvrf->fec_table[AFI_IP6]);
 }

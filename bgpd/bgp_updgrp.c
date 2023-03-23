@@ -101,12 +101,9 @@ static void sync_init(struct update_subgroup *subgrp,
 static void sync_delete(struct update_subgroup *subgrp)
 {
 	XFREE(MTYPE_BGP_SYNCHRONISE, subgrp->sync);
-	if (subgrp->hash) {
-		hash_clean(subgrp->hash,
-			   (void (*)(void *))bgp_advertise_attr_free);
-		hash_free(subgrp->hash);
-	}
-	subgrp->hash = NULL;
+	hash_clean_and_free(&subgrp->hash,
+			    (void (*)(void *))bgp_advertise_attr_free);
+
 	if (subgrp->work)
 		stream_free(subgrp->work);
 	subgrp->work = NULL;
@@ -322,6 +319,11 @@ static unsigned int updgrp_hash_key_make(const void *p)
 	afi_t afi;
 	safi_t safi;
 
+	/*
+	 * IF YOU ADD AN ADDITION TO THE HASH KEY TO ENSURE
+	 * THAT THE UPDATE GROUP CALCULATION IS CORRECT THEN
+	 * PLEASE ADD IT TO THE DEBUG OUTPUT TOO AT THE BOTTOM
+	 */
 #define SEED1 999331
 #define SEED2 2147483647
 
@@ -436,6 +438,10 @@ static unsigned int updgrp_hash_key_make(const void *p)
 		key = jhash_1word(jhash(soo_str, strlen(soo_str), SEED1), key);
 	}
 
+	/*
+	 * ANY NEW ITEMS THAT ARE ADDED TO THE key, ENSURE DEBUG
+	 * STATEMENT STAYS UP TO DATE
+	 */
 	if (bgp_debug_neighbor_events(peer)) {
 		zlog_debug(
 			"%pBP Update Group Hash: sort: %d UpdGrpFlags: %ju UpdGrpAFFlags: %ju",
@@ -457,7 +463,7 @@ static unsigned int updgrp_hash_key_make(const void *p)
 			ROUTE_MAP_OUT_NAME(filter) ? ROUTE_MAP_OUT_NAME(filter)
 						   : "(NONE)");
 		zlog_debug(
-			"%pBP Update Group Hash: dlist out: %s plist out: %s aslist out: %s usmap out: %s advmap: %s",
+			"%pBP Update Group Hash: dlist out: %s plist out: %s aslist out: %s usmap out: %s advmap: %s %d",
 			peer,
 			DISTRIBUTE_OUT_NAME(filter)
 				? DISTRIBUTE_OUT_NAME(filter)
@@ -472,7 +478,8 @@ static unsigned int updgrp_hash_key_make(const void *p)
 				? UNSUPPRESS_MAP_NAME(filter)
 				: "(NONE)",
 			ADVERTISE_MAP_NAME(filter) ? ADVERTISE_MAP_NAME(filter)
-						   : "(NONE)");
+						   : "(NONE)",
+			filter->advmap.update_type);
 		zlog_debug(
 			"%pBP Update Group Hash: default rmap: %s shared network and afi active network: %d",
 			peer,
@@ -490,6 +497,13 @@ static unsigned int updgrp_hash_key_make(const void *p)
 				   PEER_CAP_ORF_PREFIX_SM_OLD_RCV),
 			(intmax_t)CHECK_FLAG(peer->af_flags[afi][safi],
 					     PEER_FLAG_MAX_PREFIX_OUT));
+		zlog_debug(
+			"%pBP Update Group Hash: local role: %u AIGP: %d SOO: %s",
+			peer, peer->local_role,
+			!!CHECK_FLAG(peer->flags, PEER_FLAG_AIGP),
+			peer->soo[afi][safi]
+				? ecommunity_str(peer->soo[afi][safi])
+				: "(NONE)");
 		zlog_debug("%pBP Update Group Hash key: %u", peer, key);
 	}
 	return key;

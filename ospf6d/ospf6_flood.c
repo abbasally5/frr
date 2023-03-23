@@ -921,7 +921,11 @@ void ospf6_receive_lsa(struct ospf6_neighbor *from,
 	/* (1) LSA Checksum */
 	if (!ospf6_lsa_checksum_valid(new->header)) {
 		if (is_debug)
-			zlog_debug("Wrong LSA Checksum, discard");
+			zlog_debug(
+				"Wrong LSA Checksum %s (Router-ID: %pI4) [Type:%s Checksum:%#06hx), discard",
+				from->name, &from->router_id,
+				ospf6_lstype_name(new->header->type),
+				ntohs(new->header->checksum));
 		ospf6_lsa_delete(new);
 		return;
 	}
@@ -1105,9 +1109,12 @@ void ospf6_receive_lsa(struct ospf6_neighbor *from,
 					 &new->refresh);
 		}
 
+		/* GR: check for network topology change. */
 		struct ospf6 *ospf6 = from->ospf6_if->area->ospf6;
 		struct ospf6_area *area = from->ospf6_if->area;
-		if (ospf6->gr_info.restart_in_progress)
+		if (ospf6->gr_info.restart_in_progress &&
+		    (new->header->type == ntohs(OSPF6_LSTYPE_ROUTER) ||
+		     new->header->type == ntohs(OSPF6_LSTYPE_NETWORK)))
 			ospf6_gr_check_lsdb_consistency(ospf6, area);
 
 		return;

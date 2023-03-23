@@ -4266,8 +4266,8 @@ static void bgp_route_map_process_update(struct bgp *bgp, const char *rmap_name,
 						inet_ntop(bn_p->family,
 							  &bn_p->u.prefix, buf,
 							  sizeof(buf)));
-				bgp_aggregate_route(bgp, bn_p, afi, safi,
-						    aggregate);
+				(void)bgp_aggregate_route(bgp, bn_p, afi, safi,
+							  aggregate);
 			}
 		}
 	}
@@ -5512,7 +5512,7 @@ DEFUN_YANG (set_ip_nexthop_unchanged,
 
 DEFUN_YANG (set_distance,
 	    set_distance_cmd,
-	    "set distance (0-255)",
+	    "set distance (1-255)",
 	    SET_STR
 	    "BGP Administrative Distance to use\n"
 	    "Distance value\n")
@@ -5531,7 +5531,7 @@ DEFUN_YANG (set_distance,
 
 DEFUN_YANG (no_set_distance,
 	    no_set_distance_cmd,
-	    "no set distance [(0-255)]",
+	    "no set distance [(1-255)]",
 	    NO_STR SET_STR
 	    "BGP Administrative Distance to use\n"
 	    "Distance value\n")

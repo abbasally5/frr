@@ -1380,8 +1380,8 @@ ospf6_external_aggr_match(struct ospf6 *ospf6, struct prefix *p)
 void ospf6_asbr_redistribute_add(int type, ifindex_t ifindex,
 				 struct prefix *prefix,
 				 unsigned int nexthop_num,
-				 struct in6_addr *nexthop, route_tag_t tag,
-				 struct ospf6 *ospf6)
+				 const struct in6_addr *nexthop,
+				 route_tag_t tag, struct ospf6 *ospf6)
 {
 	route_map_result_t ret;
 	struct ospf6_route troute;
@@ -1469,9 +1469,13 @@ void ospf6_asbr_redistribute_add(int type, ifindex_t ifindex,
 
 		info->type = type;
 
-		if (nexthop_num && nexthop)
+		if (nexthop_num && nexthop) {
 			ospf6_route_add_nexthop(match, ifindex, nexthop);
-		else
+			if (!IN6_IS_ADDR_UNSPECIFIED(nexthop)
+			    && !IN6_IS_ADDR_LINKLOCAL(nexthop))
+				memcpy(&info->forwarding, nexthop,
+				       sizeof(struct in6_addr));
+		} else
 			ospf6_route_add_nexthop(match, ifindex, NULL);
 
 		match->path.origin.id = htonl(info->id);
@@ -1515,9 +1519,13 @@ void ospf6_asbr_redistribute_add(int type, ifindex_t ifindex,
 	}
 
 	info->type = type;
-	if (nexthop_num && nexthop)
+	if (nexthop_num && nexthop) {
 		ospf6_route_add_nexthop(route, ifindex, nexthop);
-	else
+		if (!IN6_IS_ADDR_UNSPECIFIED(nexthop)
+		    && !IN6_IS_ADDR_LINKLOCAL(nexthop))
+			memcpy(&info->forwarding, nexthop,
+			       sizeof(struct in6_addr));
+	} else
 		ospf6_route_add_nexthop(route, ifindex, NULL);
 
 	route = ospf6_route_add(route, ospf6->external_table);
@@ -3125,11 +3133,9 @@ static void ospf6_handle_external_aggr_update(struct ospf6 *ospf6)
 			aggr->action = OSPF6_ROUTE_AGGR_NONE;
 			ospf6_asbr_summary_config_delete(ospf6, rn);
 
-			if (OSPF6_EXTERNAL_RT_COUNT(aggr))
-				hash_clean(aggr->match_extnl_hash,
-				ospf6_aggr_handle_external_info);
+			hash_clean_and_free(&aggr->match_extnl_hash,
+					    ospf6_aggr_handle_external_info);
 
-			hash_free(aggr->match_extnl_hash);
 			XFREE(MTYPE_OSPF6_EXTERNAL_RT_AGGR, aggr);
 
 		} else if (aggr->action == OSPF6_ROUTE_AGGR_MODIFY) {
@@ -3167,17 +3173,13 @@ static void ospf6_aggr_unlink_external_info(void *data)
 
 void ospf6_external_aggregator_free(struct ospf6_external_aggr_rt *aggr)
 {
-	if (OSPF6_EXTERNAL_RT_COUNT(aggr))
-		hash_clean(aggr->match_extnl_hash,
-			ospf6_aggr_unlink_external_info);
+	hash_clean_and_free(&aggr->match_extnl_hash,
+			    ospf6_aggr_unlink_external_info);
 
 	if (IS_OSPF6_DEBUG_AGGR)
 		zlog_debug("%s: Release the aggregator Address(%pFX)",
 						__func__,
 						&aggr->p);
-
-	hash_free(aggr->match_extnl_hash);
-	aggr->match_extnl_hash = NULL;
 
 	XFREE(MTYPE_OSPF6_EXTERNAL_RT_AGGR, aggr);
 }

@@ -440,6 +440,29 @@ void cli_show_isis_overload_on_startup(struct vty *vty,
 }
 
 /*
+ * XPath: /frr-isisd:isis/instance/advertise-high-metrics
+ */
+DEFPY_YANG(advertise_high_metrics, advertise_high_metrics_cmd,
+	   "[no] advertise-high-metrics",
+	   NO_STR "Advertise high metric value on all interfaces\n")
+{
+	nb_cli_enqueue_change(vty, "./advertise-high-metrics", NB_OP_MODIFY,
+			      no ? "false" : "true");
+
+	return nb_cli_apply_changes(vty, NULL);
+}
+
+void cli_show_advertise_high_metrics(struct vty *vty,
+				     const struct lyd_node *dnode,
+				     bool show_defaults)
+{
+	if (yang_dnode_get_bool(dnode, NULL))
+		vty_out(vty, " advertise-high-metrics\n");
+	else if (show_defaults)
+		vty_out(vty, " no advertise-high-metrics\n");
+}
+
+/*
  * XPath: /frr-isisd:isis/instance/attach-send
  */
 DEFPY_YANG(attached_bit_send, attached_bit_send_cmd, "[no] attached-bit send",
@@ -2239,15 +2262,22 @@ void cli_show_ip_isis_threeway_shake(struct vty *vty,
 /*
  * XPath: /frr-interface:lib/interface/frr-isisd:isis/hello/padding
  */
-DEFPY_YANG(isis_hello_padding, isis_hello_padding_cmd, "[no] isis hello padding",
-      NO_STR
-      "IS-IS routing protocol\n"
-      "Add padding to IS-IS hello packets\n"
-      "Pad hello packets\n")
+DEFPY_YANG(isis_hello_padding, isis_hello_padding_cmd,
+	   "[no] isis hello padding [during-adjacency-formation]$padding_type",
+	   NO_STR
+	   "IS-IS routing protocol\n"
+	   "Type of padding for IS-IS hello packets\n"
+	   "Pad hello packets\n"
+	   "Add padding to hello packets during adjacency formation only.\n")
 {
-	nb_cli_enqueue_change(vty, "./frr-isisd:isis/hello/padding",
-			      NB_OP_MODIFY, no ? "false" : "true");
-
+	if (no) {
+		nb_cli_enqueue_change(vty, "./frr-isisd:isis/hello/padding",
+				      NB_OP_MODIFY, "disabled");
+	} else {
+		nb_cli_enqueue_change(vty, "./frr-isisd:isis/hello/padding",
+				      NB_OP_MODIFY,
+				      padding_type ? padding_type : "always");
+	}
 	return nb_cli_apply_changes(vty, NULL);
 }
 
@@ -2255,10 +2285,13 @@ void cli_show_ip_isis_hello_padding(struct vty *vty,
 				    const struct lyd_node *dnode,
 				    bool show_defaults)
 {
-	if (!yang_dnode_get_bool(dnode, NULL))
+	int hello_padding_type = yang_dnode_get_enum(dnode, NULL);
+	if (hello_padding_type == ISIS_HELLO_PADDING_DISABLED)
 		vty_out(vty, " no");
-
-	vty_out(vty, " isis hello padding\n");
+	vty_out(vty, " isis hello padding");
+	if (hello_padding_type == ISIS_HELLO_PADDING_DURING_ADJACENCY_FORMATION)
+		vty_out(vty, " during-adjacency-formation");
+	vty_out(vty, "\n");
 }
 
 /*
@@ -3159,6 +3192,8 @@ void isis_cli_init(void)
 
 	install_element(ISIS_NODE, &metric_style_cmd);
 	install_element(ISIS_NODE, &no_metric_style_cmd);
+
+	install_element(ISIS_NODE, &advertise_high_metrics_cmd);
 
 	install_element(ISIS_NODE, &area_passwd_cmd);
 	install_element(ISIS_NODE, &domain_passwd_cmd);

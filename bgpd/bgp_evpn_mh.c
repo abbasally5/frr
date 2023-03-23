@@ -487,8 +487,8 @@ static int bgp_evpn_mh_route_delete(struct bgp *bgp, struct bgp_evpn_es *es,
 	/* Next, locate route node in the global EVPN routing table.
 	 * Note that this table is a 2-level tree (RD-level + Prefix-level)
 	 */
-	global_dest = bgp_evpn_global_node_lookup(bgp->rib[afi][safi], afi,
-						  safi, p, prd, NULL);
+	global_dest = bgp_evpn_global_node_lookup(bgp->rib[afi][safi], safi, p,
+						  prd, NULL);
 	if (global_dest) {
 
 		/* Delete route entry in the global EVPN table. */
@@ -2564,7 +2564,8 @@ static void bgp_evpn_es_show_entry(struct vty *vty,
 		bgp_evpn_es_vteps_str(vtep_str, es, sizeof(vtep_str));
 
 		vty_out(vty, "%-30s %-5s %-21pRDP %-8d %s\n", es->esi_str,
-			type_str, &es->es_base_frag->prd,
+			type_str,
+			es->es_base_frag ? &es->es_base_frag->prd : NULL,
 			listcount(es->es_evi_list), vtep_str);
 	}
 }
@@ -2640,7 +2641,8 @@ static void bgp_evpn_es_show_entry_detail(struct vty *vty,
 
 		vty_out(vty, "ESI: %s\n", es->esi_str);
 		vty_out(vty, " Type: %s\n", type_str);
-		vty_out(vty, " RD: %pRDP\n", &es->es_base_frag->prd);
+		vty_out(vty, " RD: %pRDP\n",
+			es->es_base_frag ? &es->es_base_frag->prd : NULL);
 		vty_out(vty, " Originator-IP: %pI4\n", &es->originator_ip);
 		if (es->flags & BGP_EVPNES_LOCAL)
 			vty_out(vty, " Local ES DF preference: %u\n",
@@ -4593,9 +4595,8 @@ void bgp_evpn_nh_finish(struct bgp *bgp_vrf)
 		bgp_vrf->evpn_nh_table,
 		(void (*)(struct hash_bucket *, void *))bgp_evpn_nh_flush_cb,
 		NULL);
-	hash_clean(bgp_vrf->evpn_nh_table, (void (*)(void *))hash_evpn_nh_free);
-	hash_free(bgp_vrf->evpn_nh_table);
-	bgp_vrf->evpn_nh_table = NULL;
+	hash_clean_and_free(&bgp_vrf->evpn_nh_table,
+			    (void (*)(void *))hash_evpn_nh_free);
 }
 
 static void bgp_evpn_nh_update_ref_pi(struct bgp_evpn_nh *nh)

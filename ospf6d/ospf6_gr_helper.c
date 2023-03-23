@@ -110,10 +110,8 @@ static void ospf6_enable_rtr_hash_destroy(struct ospf6 *ospf6)
 	if (ospf6->ospf6_helper_cfg.enable_rtr_list == NULL)
 		return;
 
-	hash_clean(ospf6->ospf6_helper_cfg.enable_rtr_list,
-		   ospf6_disable_rtr_hash_free);
-	hash_free(ospf6->ospf6_helper_cfg.enable_rtr_list);
-	ospf6->ospf6_helper_cfg.enable_rtr_list = NULL;
+	hash_clean_and_free(&ospf6->ospf6_helper_cfg.enable_rtr_list,
+			    ospf6_disable_rtr_hash_free);
 }
 
 /*
@@ -280,8 +278,9 @@ int ospf6_process_grace_lsa(struct ospf6 *ospf6, struct ospf6_lsa *lsa,
 
 	if (IS_DEBUG_OSPF6_GR)
 		zlog_debug(
-			"%s, Grace LSA received from  %pI4, grace interval:%u, restart reason :%s",
-			__func__, &restarter->router_id, grace_interval,
+			"%s, Grace LSA received from %s(%pI4), grace interval:%u, restart reason:%s",
+			__func__, restarter->name, &restarter->router_id,
+			grace_interval,
 			ospf6_restart_reason_desc[restart_reason]);
 
 	/* Verify Helper enabled globally */
