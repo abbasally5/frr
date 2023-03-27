@@ -983,10 +983,13 @@ void zlog_aux_init(const char *prefix, int prio_min)
 void zlog_init(const char *progname, const char *protoname,
 	       unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir)
 {
+
+	zlog_err("tmpdir: %s", tmpdir)
 	zlog_uid = uid;
 	zlog_gid = gid;
 	zlog_instance = instance;
 	const char *tmp_base_dir = tmpdir ? tmpdir : TMPBASEDIR;
+	zlog_err("tmp_base_dir: %s", tmpdir)
 
 	if (instance) {
 		snprintfrr(zlog_tmpdir, sizeof(zlog_tmpdir), "%s/%s-%d.%ld",

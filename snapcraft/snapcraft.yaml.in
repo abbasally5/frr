@@ -13,7 +13,7 @@ base: core18
 
 apps:
     vtysh:
-        command: bin/vtysh --vty_socket $SNAP_DATA --config_dir $SNAP_DATA
+        command: bin/vtysh --vty_socket $SNAP_DATA --config_dir $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
@@ -159,115 +159,115 @@ apps:
     set:
         command: bin/set-options
     zebra-debug:
-        command: sbin/zebra -f $SNAP_DATA/zebra.conf --pid_file $SNAP_DATA/zebra.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/zebra -f $SNAP_DATA/zebra.conf --pid_file $SNAP_DATA/zebra.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     bgpd-debug:
-        command: sbin/bgpd -f $SNAP_DATA/bgpd.conf --pid_file $SNAP_DATA/bgpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --moduledir $SNAP/lib/frr/modules
+        command: sbin/bgpd -f $SNAP_DATA/bgpd.conf --pid_file $SNAP_DATA/bgpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --moduledir $SNAP/lib/frr/modules --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     ospfd-debug:
-        command: sbin/ospfd -f $SNAP_DATA/ospfd.conf --pid_file $SNAP_DATA/ospfd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/ospfd -f $SNAP_DATA/ospfd.conf --pid_file $SNAP_DATA/ospfd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     ospf6d-debug:
-        command: sbin/ospf6d -f $SNAP_DATA/ospf6d.conf --pid_file $SNAP_DATA/ospf6d.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/ospf6d -f $SNAP_DATA/ospf6d.conf --pid_file $SNAP_DATA/ospf6d.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     isisd-debug:
-        command: sbin/isisd -f $SNAP_DATA/isisd.conf --pid_file $SNAP_DATA/isisd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/isisd -f $SNAP_DATA/isisd.conf --pid_file $SNAP_DATA/isisd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     ripd-debug:
-        command: sbin/ripd -f $SNAP_DATA/ripd.conf --pid_file $SNAP_DATA/ripd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/ripd -f $SNAP_DATA/ripd.conf --pid_file $SNAP_DATA/ripd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     ripngd-debug:
-        command: sbin/ripngd -f $SNAP_DATA/ripngd.conf --pid_file $SNAP_DATA/ripngd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/ripngd -f $SNAP_DATA/ripngd.conf --pid_file $SNAP_DATA/ripngd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     pimd-debug:
-        command: sbin/pimd -f $SNAP_DATA/pimd.conf --pid_file $SNAP_DATA/pimd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/pimd -f $SNAP_DATA/pimd.conf --pid_file $SNAP_DATA/pimd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     pim6d-debug:
-        command: sbin/pim6d -f $SNAP_DATA/pim6d.conf --pid_file $SNAP_DATA/pim6d.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/pim6d -f $SNAP_DATA/pim6d.conf --pid_file $SNAP_DATA/pim6d.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     ldpd-debug:
-        command: sbin/ldpd -f $SNAP_DATA/ldpd.conf --pid_file $SNAP_DATA/ldpd.pid --socket $SNAP_DATA/zsock --ctl_socket $SNAP_DATA --vty_socket $SNAP_DATA
+        command: sbin/ldpd -f $SNAP_DATA/ldpd.conf --pid_file $SNAP_DATA/ldpd.pid --socket $SNAP_DATA/zsock --ctl_socket $SNAP_DATA --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     nhrpd-debug:
-        command: sbin/nhrpd -f $SNAP_DATA/nhrpd.conf --pid_file $SNAP_DATA/nhrpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/nhrpd -f $SNAP_DATA/nhrpd.conf --pid_file $SNAP_DATA/nhrpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     babeld-debug:
-        command: sbin/babeld -f $SNAP_DATA/babeld.conf --pid_file $SNAP_DATA/babeld.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/babeld -f $SNAP_DATA/babeld.conf --pid_file $SNAP_DATA/babeld.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     eigrpd-debug:
-        command: sbin/eigrpd -f $SNAP_DATA/eigrpd.conf --pid_file $SNAP_DATA/eigrpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/eigrpd -f $SNAP_DATA/eigrpd.conf --pid_file $SNAP_DATA/eigrpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     pbrd-debug:
-        command: sbin/pbrd -f $SNAP_DATA/pbrd.conf --pid_file $SNAP_DATA/pbrd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/pbrd -f $SNAP_DATA/pbrd.conf --pid_file $SNAP_DATA/pbrd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     staticd-debug:
-        command: sbin/staticd -f $SNAP_DATA/staticd.conf --pid_file $SNAP_DATA/staticd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/staticd -f $SNAP_DATA/staticd.conf --pid_file $SNAP_DATA/staticd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     bfdd-debug:
-        command: sbin/bfdd -f $SNAP_DATA/bfdd.conf --pid_file $SNAP_DATA/bfdd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --bfdctl $SNAP_DATA/bfdd.sock
+        command: sbin/bfdd -f $SNAP_DATA/bfdd.conf --pid_file $SNAP_DATA/bfdd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --bfdctl $SNAP_DATA/bfdd.sock --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     fabricd-debug:
-        command: sbin/fabricd -f $SNAP_DATA/fabricd.conf --pid_file $SNAP_DATA/fabricd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/fabricd -f $SNAP_DATA/fabricd.conf --pid_file $SNAP_DATA/fabricd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     vrrpd-debug:
-        command: sbin/vrrpd -f $SNAP_DATA/vrrpd.conf --pid_file $SNAP_DATA/vrrpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/vrrpd -f $SNAP_DATA/vrrpd.conf --pid_file $SNAP_DATA/vrrpd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
             - network-control
     pathd-debug:
-        command: sbin/pathd -f $SNAP_DATA/pathd.conf --pid_file $SNAP_DATA/pathd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA
+        command: sbin/pathd -f $SNAP_DATA/pathd.conf --pid_file $SNAP_DATA/pathd.pid --socket $SNAP_DATA/zsock --vty_socket $SNAP_DATA --tmpdir $SNAP_DATA
         plugs:
             - network
             - network-bind
@@ -360,7 +360,7 @@ parts:
            - libselinux1
            - libxtables12
         plugin: autotools
-        source: ../frr-@PACKAGE_VERSION@.tar.gz
+        source: snap/local/frr-@PACKAGE_VERSION@.tar.gz
         configflags:
             - --enable-vtysh
             - --enable-isisd
