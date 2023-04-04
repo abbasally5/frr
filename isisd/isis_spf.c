@@ -11,7 +11,7 @@
 
 #include <zebra.h>
 
-#include "thread.h"
+#include "frrevent.h"
 #include "linklist.h"
 #include "vty.h"
 #include "log.h"
@@ -241,11 +241,7 @@ void isis_vertex_del(struct isis_vertex *vertex)
 {
 	list_delete(&vertex->Adj_N);
 	list_delete(&vertex->parents);
-	if (vertex->firsthops) {
-		hash_clean(vertex->firsthops, NULL);
-		hash_free(vertex->firsthops);
-		vertex->firsthops = NULL;
-	}
+	hash_clean_and_free(&vertex->firsthops, NULL);
 
 	memset(vertex, 0, sizeof(struct isis_vertex));
 	XFREE(MTYPE_ISIS_VERTEX, vertex);
@@ -371,8 +367,7 @@ struct isis_spftree *isis_spftree_new(struct isis_area *area,
 
 void isis_spftree_del(struct isis_spftree *spftree)
 {
-	hash_clean(spftree->prefix_sids, NULL);
-	hash_free(spftree->prefix_sids);
+	hash_clean_and_free(&spftree->prefix_sids, NULL);
 	isis_zebra_rlfa_unregister_all(spftree);
 	isis_rlfa_list_clear(spftree);
 	list_delete(&spftree->lfa.remote.pc_spftrees);
@@ -1858,9 +1853,9 @@ void isis_spf_switchover_routes(struct isis_area *area,
 				      family, nexthop_ip, ifindex);
 }
 
-static void isis_run_spf_cb(struct thread *thread)
+static void isis_run_spf_cb(struct event *thread)
 {
-	struct isis_spf_run *run = THREAD_ARG(thread);
+	struct isis_spf_run *run = EVENT_ARG(thread);
 	struct isis_area *area = run->area;
 	int level = run->level;
 	int have_run = 0;
@@ -1955,7 +1950,7 @@ int _isis_spf_schedule(struct isis_area *area, int level,
 			area->area_tag, level, diff, func, file, line);
 	}
 
-	THREAD_OFF(area->t_rlfa_rib_update);
+	EVENT_OFF(area->t_rlfa_rib_update);
 	if (area->spf_delay_ietf[level - 1]) {
 		/* Need to call schedule function also if spf delay is running
 		 * to
@@ -1966,9 +1961,9 @@ int _isis_spf_schedule(struct isis_area *area, int level,
 		if (area->spf_timer[level - 1])
 			return ISIS_OK;
 
-		thread_add_timer_msec(master, isis_run_spf_cb,
-				      isis_run_spf_arg(area, level), delay,
-				      &area->spf_timer[level - 1]);
+		event_add_timer_msec(master, isis_run_spf_cb,
+				     isis_run_spf_arg(area, level), delay,
+				     &area->spf_timer[level - 1]);
 		return ISIS_OK;
 	}
 
@@ -1995,8 +1990,8 @@ int _isis_spf_schedule(struct isis_area *area, int level,
 		timer = area->min_spf_interval[level - 1] - diff;
 	}
 
-	thread_add_timer(master, isis_run_spf_cb, isis_run_spf_arg(area, level),
-			 timer, &area->spf_timer[level - 1]);
+	event_add_timer(master, isis_run_spf_cb, isis_run_spf_arg(area, level),
+			timer, &area->spf_timer[level - 1]);
 
 	if (IS_DEBUG_SPF_EVENTS)
 		zlog_debug("ISIS-SPF (%s) L%d SPF scheduled %ld sec from now",

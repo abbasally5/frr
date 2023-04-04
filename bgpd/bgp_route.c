@@ -20,7 +20,7 @@
 #include "buffer.h"
 #include "sockunion.h"
 #include "plist.h"
-#include "thread.h"
+#include "frrevent.h"
 #include "workqueue.h"
 #include "queue.h"
 #include "memory.h"
@@ -151,9 +151,9 @@ struct bgp_dest *bgp_afi_node_get(struct bgp_table *table, afi_t afi,
 	return dest;
 }
 
-struct bgp_dest *bgp_afi_node_lookup(struct bgp_table *table, afi_t afi,
-				     safi_t safi, const struct prefix *p,
-				     struct prefix_rd *prd)
+struct bgp_dest *bgp_safi_node_lookup(struct bgp_table *table, safi_t safi,
+				      const struct prefix *p,
+				      struct prefix_rd *prd)
 {
 	struct bgp_dest *dest;
 	struct bgp_dest *pdest = NULL;
@@ -316,10 +316,15 @@ static int bgp_dest_set_defer_flag(struct bgp_dest *dest, bool delete)
 		return 0;
 
 	if (CHECK_FLAG(dest->flags, BGP_NODE_PROCESS_SCHEDULED)) {
-		if (BGP_DEBUG(update, UPDATE_OUT))
+		if (BGP_DEBUG(update, UPDATE_OUT)) {
+			table = bgp_dest_table(dest);
+			if (table)
+				bgp = table->bgp;
+
 			zlog_debug(
-				"Route %pBD is in workqueue and being processed, not deferred.",
-				dest);
+				"Route %pBD(%s) is in workqueue and being processed, not deferred.",
+				dest, bgp ? bgp->name_pretty : "(Unknown)");
+		}
 
 		return 0;
 	}
@@ -367,8 +372,8 @@ static int bgp_dest_set_defer_flag(struct bgp_dest *dest, bool delete)
 				bgp->gr_info[afi][safi].gr_deferred++;
 			SET_FLAG(dest->flags, BGP_NODE_SELECT_DEFER);
 			if (BGP_DEBUG(update, UPDATE_OUT))
-				zlog_debug("DEFER route %pBD, dest %p", dest,
-					   dest);
+				zlog_debug("DEFER route %pBD(%s), dest %p",
+					   dest, bgp->name_pretty, dest);
 			return 0;
 		}
 	}
@@ -2381,7 +2386,10 @@ bool subgroup_announce_check(struct bgp_dest *dest, struct bgp_path_info *pi,
 			if (bgp_debug_update(NULL, p, subgrp->update_group, 0))
 				zlog_debug(
 					"%pBP [Update:SEND] %pFX is filtered by route-map '%s'",
-					peer, p, ROUTE_MAP_OUT_NAME(filter));
+					peer, p,
+					bgp_path_suppressed(pi)
+						? UNSUPPRESS_MAP_NAME(filter)
+						: ROUTE_MAP_OUT_NAME(filter));
 			bgp_attr_flush(rmap_path.attr);
 			return false;
 		}
@@ -2613,14 +2621,14 @@ bool subgroup_announce_check(struct bgp_dest *dest, struct bgp_path_info *pi,
 	return true;
 }
 
-static void bgp_route_select_timer_expire(struct thread *thread)
+static void bgp_route_select_timer_expire(struct event *thread)
 {
 	struct afi_safi_info *info;
 	afi_t afi;
 	safi_t safi;
 	struct bgp *bgp;
 
-	info = THREAD_ARG(thread);
+	info = EVENT_ARG(thread);
 	afi = info->afi;
 	safi = info->safi;
 	bgp = info->bgp;
@@ -2755,8 +2763,10 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 				bgp_path_info_reap(dest, pi);
 
 			if (debug)
-				zlog_debug("%s: pi %p in holddown", __func__,
-					   pi);
+				zlog_debug(
+					"%s: %pBD(%s) pi from %s in holddown",
+					__func__, dest, bgp->name_pretty,
+					pi->peer->host);
 
 			continue;
 		}
@@ -2767,8 +2777,10 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 
 				if (debug)
 					zlog_debug(
-						"%s: pi %p non self peer %s not estab state",
-						__func__, pi, pi->peer->host);
+						"%s: %pBD(%s) non self peer %s not estab state",
+						__func__, dest,
+						bgp->name_pretty,
+						pi->peer->host);
 
 				continue;
 			}
@@ -2777,7 +2789,9 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 		    && (!CHECK_FLAG(pi->flags, BGP_PATH_DMED_SELECTED))) {
 			bgp_path_info_unset_flag(dest, pi, BGP_PATH_DMED_CHECK);
 			if (debug)
-				zlog_debug("%s: pi %p dmed", __func__, pi);
+				zlog_debug("%s: %pBD(%s) pi %s dmed", __func__,
+					   dest, bgp->name_pretty,
+					   pi->peer->host);
 			continue;
 		}
 
@@ -2840,8 +2854,9 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 			if (!bgp_path_info_nexthop_cmp(pi, new_select)) {
 				if (debug)
 					zlog_debug(
-						"%pBD: %s has the same nexthop as the bestpath, skip it",
-						dest, path_buf);
+						"%pBD(%s): %s has the same nexthop as the bestpath, skip it",
+						dest, bgp->name_pretty,
+						path_buf);
 				continue;
 			}
 
@@ -2852,8 +2867,9 @@ void bgp_best_selection(struct bgp *bgp, struct bgp_dest *dest,
 			if (paths_eq) {
 				if (debug)
 					zlog_debug(
-						"%pBD: %s is equivalent to the bestpath, add to the multipath list",
-						dest, path_buf);
+						"%pBD(%s): %s is equivalent to the bestpath, add to the multipath list",
+						dest, bgp->name_pretty,
+						path_buf);
 				bgp_mp_list_add(&mp_list, pi);
 			}
 		}
@@ -2921,10 +2937,14 @@ void subgroup_process_announce_selected(struct update_subgroup *subgrp,
 			 * in FIB, then it is advertised
 			 */
 			if (advertise) {
-				if (!bgp_check_withdrawal(bgp, dest))
-					bgp_adj_out_set_subgroup(
-						dest, subgrp, &attr, selected);
-				else
+				if (!bgp_check_withdrawal(bgp, dest)) {
+					struct attr *adv_attr =
+						bgp_attr_intern(&attr);
+
+					bgp_adj_out_set_subgroup(dest, subgrp,
+								 adv_attr,
+								 selected);
+				} else
 					bgp_adj_out_unset_subgroup(
 						dest, subgrp, 1, addpath_tx_id);
 			}
@@ -3099,8 +3119,8 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 			debug = bgp_debug_bestpath(dest);
 		if (debug)
 			zlog_debug(
-				"%s: bgp delete in progress, ignoring event, p=%pBD",
-				__func__, dest);
+				"%s: bgp delete in progress, ignoring event, p=%pBD(%s)",
+				__func__, dest, bgp->name_pretty);
 		return;
 	}
 	/* Is it end of initial update? (after startup) */
@@ -3123,7 +3143,7 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 
 	debug = bgp_debug_bestpath(dest);
 	if (debug)
-		zlog_debug("%s: p=%pBDi(%s) afi=%s, safi=%s start", __func__,
+		zlog_debug("%s: p=%pBD(%s) afi=%s, safi=%s start", __func__,
 			   dest, bgp->name_pretty, afi2str(afi),
 			   safi2str(safi));
 
@@ -3132,7 +3152,8 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 	 */
 	if (CHECK_FLAG(dest->flags, BGP_NODE_SELECT_DEFER)) {
 		if (BGP_DEBUG(update, UPDATE_OUT))
-			zlog_debug("SELECT_DEFER flag set for route %p", dest);
+			zlog_debug("SELECT_DEFER flag set for route %p(%s)",
+				   dest, bgp->name_pretty);
 		return;
 	}
 
@@ -3207,11 +3228,6 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 			if (bgp_fibupd_safi(safi)
 			    && !bgp_option_check(BGP_OPT_NO_FIB)) {
 
-				if (BGP_SUPPRESS_FIB_ENABLED(bgp)
-				    && new_select->sub_type == BGP_ROUTE_NORMAL)
-					SET_FLAG(dest->flags,
-						 BGP_NODE_FIB_INSTALL_PENDING);
-
 				if (new_select->type == ZEBRA_ROUTE_BGP
 				    && (new_select->sub_type == BGP_ROUTE_NORMAL
 					|| new_select->sub_type
@@ -3263,7 +3279,7 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 
 		if (!bgp->t_rmap_def_originate_eval) {
 			bgp_lock(bgp);
-			thread_add_timer(
+			event_add_timer(
 				bm->master,
 				update_group_refresh_default_originate_route_map,
 				bgp, RMAP_DEFAULT_ORIGINATE_EVAL_TIMER,
@@ -3317,10 +3333,6 @@ static void bgp_process_main_one(struct bgp *bgp, struct bgp_dest *dest,
 			|| new_select->sub_type == BGP_ROUTE_AGGREGATE
 			|| new_select->sub_type == BGP_ROUTE_IMPORTED)) {
 
-			if (BGP_SUPPRESS_FIB_ENABLED(bgp))
-				SET_FLAG(dest->flags,
-					 BGP_NODE_FIB_INSTALL_PENDING);
-
 			/* if this is an evpn imported type-5 prefix,
 			 * we need to withdraw the route first to clear
 			 * the nh neigh and the RMAC entry.
@@ -3363,11 +3375,11 @@ void bgp_best_path_select_defer(struct bgp *bgp, afi_t afi, safi_t safi)
 	struct afi_safi_info *thread_info;
 
 	if (bgp->gr_info[afi][safi].t_route_select) {
-		struct thread *t = bgp->gr_info[afi][safi].t_route_select;
+		struct event *t = bgp->gr_info[afi][safi].t_route_select;
 
-		thread_info = THREAD_ARG(t);
+		thread_info = EVENT_ARG(t);
 		XFREE(MTYPE_TMP, thread_info);
-		THREAD_OFF(bgp->gr_info[afi][safi].t_route_select);
+		EVENT_OFF(bgp->gr_info[afi][safi].t_route_select);
 	}
 
 	if (BGP_DEBUG(update, UPDATE_OUT)) {
@@ -3401,7 +3413,7 @@ void bgp_best_path_select_defer(struct bgp *bgp, afi_t afi, safi_t safi)
 	if (!bgp->gr_info[afi][safi].gr_deferred) {
 		bgp_send_delayed_eor(bgp);
 		/* Send route processing complete message to RIB */
-		bgp_zebra_update(afi, safi, bgp->vrf_id,
+		bgp_zebra_update(bgp, afi, safi,
 				 ZEBRA_CLIENT_ROUTE_UPDATE_COMPLETE);
 		return;
 	}
@@ -3415,7 +3427,7 @@ void bgp_best_path_select_defer(struct bgp *bgp, afi_t afi, safi_t safi)
 	/* If there are more routes to be processed, start the
 	 * selection timer
 	 */
-	thread_add_timer(bm->master, bgp_route_select_timer_expire, thread_info,
+	event_add_timer(bm->master, bgp_route_select_timer_expire, thread_info,
 			BGP_ROUTE_SELECT_DELAY,
 			&bgp->gr_info[afi][safi].t_route_select);
 }
@@ -3567,11 +3579,11 @@ void bgp_add_eoiu_mark(struct bgp *bgp)
 	work_queue_add(bgp->process_queue, pqnode);
 }
 
-static void bgp_maximum_prefix_restart_timer(struct thread *thread)
+static void bgp_maximum_prefix_restart_timer(struct event *thread)
 {
 	struct peer *peer;
 
-	peer = THREAD_ARG(thread);
+	peer = EVENT_ARG(thread);
 	peer->t_pmax_restart = NULL;
 
 	if (bgp_debug_neighbor_events(peer))
@@ -3825,6 +3837,12 @@ bool bgp_update_martian_nexthop(struct bgp *bgp, afi_t afi, safi_t safi,
 	bool is_bgp_static_route =
 		(type == ZEBRA_ROUTE_BGP && stype == BGP_ROUTE_STATIC) ? true
 								       : false;
+
+	/* If `bgp allow-martian-nexthop` is turned on, return next-hop
+	 * as good.
+	 */
+	if (bgp->allow_martian)
+		return false;
 
 	/*
 	 * Only validated for unicast and multicast currently.
@@ -4250,18 +4268,6 @@ void bgp_update(struct peer *peer, const struct prefix *p, uint32_t addpath_id,
 		bgp_attr_flush(&new_attr);
 		goto filtered;
 	}
-	/* The flag BGP_NODE_FIB_INSTALL_PENDING is for the following
-	 * condition :
-	 * Suppress fib is enabled
-	 * BGP_OPT_NO_FIB is not enabled
-	 * Route type is BGP_ROUTE_NORMAL (peer learnt routes)
-	 * Route is being installed first time (BGP_NODE_FIB_INSTALLED not set)
-	 */
-	if (bgp_fibupd_safi(safi) && BGP_SUPPRESS_FIB_ENABLED(bgp)
-	    && (sub_type == BGP_ROUTE_NORMAL)
-	    && (!bgp_option_check(BGP_OPT_NO_FIB))
-	    && (!CHECK_FLAG(dest->flags, BGP_NODE_FIB_INSTALLED)))
-		SET_FLAG(dest->flags, BGP_NODE_FIB_INSTALL_PENDING);
 
 	/* If neighbor soo is configured, tag all incoming routes with
 	 * this SoO tag and then filter out advertisements in
@@ -5028,7 +5034,7 @@ void bgp_stop_announce_route_timer(struct peer_af *paf)
 	if (!paf->t_announce_route)
 		return;
 
-	THREAD_OFF(paf->t_announce_route);
+	EVENT_OFF(paf->t_announce_route);
 }
 
 /*
@@ -5037,12 +5043,12 @@ void bgp_stop_announce_route_timer(struct peer_af *paf)
  * Callback that is invoked when the route announcement timer for a
  * peer_af expires.
  */
-static void bgp_announce_route_timer_expired(struct thread *t)
+static void bgp_announce_route_timer_expired(struct event *t)
 {
 	struct peer_af *paf;
 	struct peer *peer;
 
-	paf = THREAD_ARG(t);
+	paf = EVENT_ARG(t);
 	peer = paf->peer;
 
 	if (!peer_established(peer))
@@ -5091,11 +5097,11 @@ void bgp_announce_route(struct peer *peer, afi_t afi, safi_t safi, bool force)
 	 * multiple peers and the announcement doesn't happen in the
 	 * vty context.
 	 */
-	thread_add_timer_msec(bm->master, bgp_announce_route_timer_expired, paf,
-			      (subgrp->peer_count == 1)
-				      ? BGP_ANNOUNCE_ROUTE_SHORT_DELAY_MS
-				      : BGP_ANNOUNCE_ROUTE_DELAY_MS,
-			      &paf->t_announce_route);
+	event_add_timer_msec(bm->master, bgp_announce_route_timer_expired, paf,
+			     (subgrp->peer_count == 1)
+				     ? BGP_ANNOUNCE_ROUTE_SHORT_DELAY_MS
+				     : BGP_ANNOUNCE_ROUTE_DELAY_MS,
+			     &paf->t_announce_route);
 }
 
 /*
@@ -5197,7 +5203,7 @@ static void bgp_soft_reconfig_table(struct peer *peer, afi_t afi, safi_t safi,
  * Without splitting the full job into several part,
  * vtysh waits for the job to finish before responding to a BGP command
  */
-static void bgp_soft_reconfig_table_task(struct thread *thread)
+static void bgp_soft_reconfig_table_task(struct event *thread)
 {
 	uint32_t iter, max_iter;
 	struct bgp_dest *dest;
@@ -5207,7 +5213,7 @@ static void bgp_soft_reconfig_table_task(struct thread *thread)
 	struct prefix_rd *prd;
 	struct listnode *node, *nnode;
 
-	table = THREAD_ARG(thread);
+	table = EVENT_ARG(thread);
 	prd = NULL;
 
 	max_iter = SOFT_RECONFIG_TASK_MAX_PREFIX;
@@ -5245,8 +5251,8 @@ static void bgp_soft_reconfig_table_task(struct thread *thread)
 	 */
 	if (dest || table->soft_reconfig_init) {
 		table->soft_reconfig_init = false;
-		thread_add_event(bm->master, bgp_soft_reconfig_table_task,
-				 table, 0, &table->soft_reconfig_thread);
+		event_add_event(bm->master, bgp_soft_reconfig_table_task, table,
+				0, &table->soft_reconfig_thread);
 		return;
 	}
 	/* we're done, clean up the background iteration context info and
@@ -5301,7 +5307,7 @@ void bgp_soft_reconfig_table_task_cancel(const struct bgp *bgp,
 
 		list_delete(&ntable->soft_reconfig_peers);
 		bgp_soft_reconfig_table_flag(ntable, false);
-		THREAD_OFF(ntable->soft_reconfig_thread);
+		EVENT_OFF(ntable->soft_reconfig_thread);
 	}
 }
 
@@ -5347,9 +5353,9 @@ bool bgp_soft_reconfig_in(struct peer *peer, afi_t afi, safi_t safi)
 		bgp_soft_reconfig_table_flag(table, true);
 
 		if (!table->soft_reconfig_thread)
-			thread_add_event(bm->master,
-					 bgp_soft_reconfig_table_task, table, 0,
-					 &table->soft_reconfig_thread);
+			event_add_event(bm->master,
+					bgp_soft_reconfig_table_task, table, 0,
+					&table->soft_reconfig_thread);
 		/* Cancel bgp_announce_route_timer_expired threads.
 		 * bgp_announce_route_timer_expired threads have been scheduled
 		 * to announce routes as soon as the soft_reconfigure process
@@ -7239,7 +7245,7 @@ static struct bgp_aggregate *bgp_aggregate_new(void)
 	return XCALLOC(MTYPE_BGP_AGGREGATE, sizeof(struct bgp_aggregate));
 }
 
-static void bgp_aggregate_free(struct bgp_aggregate *aggregate)
+void bgp_aggregate_free(struct bgp_aggregate *aggregate)
 {
 	XFREE(MTYPE_ROUTE_MAP_NAME, aggregate->suppress_map_name);
 	route_map_counter_decrement(aggregate->suppress_map);
@@ -7452,6 +7458,10 @@ static void bgp_aggregate_install(
 			aggregate, atomic_aggregate, p);
 
 		if (!attr) {
+			aspath_free(aspath);
+			community_free(&community);
+			ecommunity_free(&ecommunity);
+			lcommunity_free(&lcommunity);
 			bgp_dest_unlock_node(dest);
 			bgp_aggregate_delete(bgp, p, afi, safi, aggregate);
 			if (BGP_DEBUG(update_groups, UPDATE_GROUPS))
@@ -7642,7 +7652,7 @@ static void bgp_aggregate_med_update(struct bgp_aggregate *aggregate,
 }
 
 /* Update an aggregate as routes are added/removed from the BGP table */
-void bgp_aggregate_route(struct bgp *bgp, const struct prefix *p, afi_t afi,
+bool bgp_aggregate_route(struct bgp *bgp, const struct prefix *p, afi_t afi,
 			 safi_t safi, struct bgp_aggregate *aggregate)
 {
 	struct bgp_table *table;
@@ -7661,10 +7671,8 @@ void bgp_aggregate_route(struct bgp *bgp, const struct prefix *p, afi_t afi,
 	 * then do not create aggregate route
 	 */
 	if (CHECK_FLAG(bgp->flags, BGP_FLAG_DELETE_IN_PROGRESS) ||
-	    (bgp->peer_self == NULL)) {
-		bgp_aggregate_free(aggregate);
-		return;
-	}
+	    bgp->peer_self == NULL)
+		return false;
 
 	/* Initialize and test routes for MED difference. */
 	if (aggregate->match_med)
@@ -7856,6 +7864,8 @@ void bgp_aggregate_route(struct bgp *bgp, const struct prefix *p, afi_t afi,
 	bgp_aggregate_install(bgp, afi, safi, p, origin, aspath, community,
 			      ecommunity, lcommunity, atomic_aggregate,
 			      aggregate);
+
+	return true;
 }
 
 void bgp_aggregate_delete(struct bgp *bgp, const struct prefix *p, afi_t afi,
@@ -8334,59 +8344,7 @@ static int bgp_aggregate_unset(struct vty *vty, const char *prefix_str,
 	/* Unlock aggregate address configuration. */
 	bgp_dest_set_bgp_aggregate_info(dest, NULL);
 
-	if (aggregate->community)
-		community_free(&aggregate->community);
-
-	if (aggregate->community_hash) {
-		/* Delete all communities in the hash.
-		 */
-		hash_clean(aggregate->community_hash,
-			   bgp_aggr_community_remove);
-		/* Free up the community_hash.
-		 */
-		hash_free(aggregate->community_hash);
-	}
-
-	if (aggregate->ecommunity)
-		ecommunity_free(&aggregate->ecommunity);
-
-	if (aggregate->ecommunity_hash) {
-		/* Delete all ecommunities in the hash.
-		 */
-		hash_clean(aggregate->ecommunity_hash,
-			   bgp_aggr_ecommunity_remove);
-		/* Free up the ecommunity_hash.
-		 */
-		hash_free(aggregate->ecommunity_hash);
-	}
-
-	if (aggregate->lcommunity)
-		lcommunity_free(&aggregate->lcommunity);
-
-	if (aggregate->lcommunity_hash) {
-		/* Delete all lcommunities in the hash.
-		 */
-		hash_clean(aggregate->lcommunity_hash,
-			   bgp_aggr_lcommunity_remove);
-		/* Free up the lcommunity_hash.
-		 */
-		hash_free(aggregate->lcommunity_hash);
-	}
-
-	if (aggregate->aspath)
-		aspath_free(aggregate->aspath);
-
-	if (aggregate->aspath_hash) {
-		/* Delete all as-paths in the hash.
-		 */
-		hash_clean(aggregate->aspath_hash,
-			   bgp_aggr_aspath_remove);
-		/* Free up the aspath_hash.
-		 */
-		hash_free(aggregate->aspath_hash);
-	}
-
-	bgp_aggregate_free(aggregate);
+	bgp_free_aggregate_info(aggregate);
 	bgp_dest_unlock_node(dest);
 	bgp_dest_unlock_node(dest);
 
@@ -8498,7 +8456,10 @@ static int bgp_aggregate_set(struct vty *vty, const char *prefix_str, afi_t afi,
 	bgp_dest_set_bgp_aggregate_info(dest, aggregate);
 
 	/* Aggregate address insert into BGP routing table. */
-	bgp_aggregate_route(bgp, &p, afi, safi, aggregate);
+	if (!bgp_aggregate_route(bgp, &p, afi, safi, aggregate)) {
+		bgp_aggregate_free(aggregate);
+		bgp_dest_unlock_node(dest);
+	}
 
 	return CMD_SUCCESS;
 }
@@ -8565,6 +8526,34 @@ DEFPY(aggregate_addressv4, aggregate_addressv4_cmd,
 	return bgp_aggregate_set(vty, prefix_s, AFI_IP, safi, rmap_name,
 				 summary_only != NULL, as_set, origin,
 				 match_med != NULL, suppress_map);
+}
+
+void bgp_free_aggregate_info(struct bgp_aggregate *aggregate)
+{
+	if (aggregate->community)
+		community_free(&aggregate->community);
+
+	hash_clean_and_free(&aggregate->community_hash,
+			    bgp_aggr_community_remove);
+
+	if (aggregate->ecommunity)
+		ecommunity_free(&aggregate->ecommunity);
+
+	hash_clean_and_free(&aggregate->ecommunity_hash,
+			    bgp_aggr_ecommunity_remove);
+
+	if (aggregate->lcommunity)
+		lcommunity_free(&aggregate->lcommunity);
+
+	hash_clean_and_free(&aggregate->lcommunity_hash,
+			    bgp_aggr_lcommunity_remove);
+
+	if (aggregate->aspath)
+		aspath_free(aggregate->aspath);
+
+	hash_clean_and_free(&aggregate->aspath_hash, bgp_aggr_aspath_remove);
+
+	bgp_aggregate_free(aggregate);
 }
 
 DEFPY(aggregate_addressv6, aggregate_addressv6_cmd,
@@ -11109,7 +11098,7 @@ void route_vty_out_detail(struct vty *vty, struct bgp *bgp, struct bgp_dest *bn,
 	if (path->peer->t_gr_restart &&
 	    CHECK_FLAG(path->flags, BGP_PATH_STALE)) {
 		unsigned long gr_remaining =
-			thread_timer_remain_second(path->peer->t_gr_restart);
+			event_timer_remain_second(path->peer->t_gr_restart);
 
 		if (json_paths) {
 			json_object_int_add(json_path,
@@ -11125,7 +11114,7 @@ void route_vty_out_detail(struct vty *vty, struct bgp *bgp, struct bgp_dest *bn,
 	    bgp_attr_get_community(attr) &&
 	    community_include(bgp_attr_get_community(attr),
 			      COMMUNITY_LLGR_STALE)) {
-		unsigned long llgr_remaining = thread_timer_remain_second(
+		unsigned long llgr_remaining = event_timer_remain_second(
 			path->peer->t_llgr_stale[afi][safi]);
 
 		if (json_paths) {
@@ -11614,9 +11603,28 @@ static int bgp_show_table(struct vty *vty, struct bgp *bgp, safi_t safi,
 					vty_out(vty, ",\"%pFX\": ", dest_p);
 			}
 
+			/* This is used for 'json detail' vty keywords.
+			 *
+			 * In plain 'json' the per-prefix header is encoded
+			 * as a standalone dictionary in the first json_paths
+			 * array element:
+			 * "<prefix>": [{header}, {path-1}, {path-N}]
+			 * (which is confusing and borderline broken)
+			 *
+			 * For 'json detail' this changes the value
+			 * of each prefix-key to be a dictionary where each
+			 * header item has its own key, and json_paths is
+			 * tucked under the "paths" key:
+			 * "<prefix>": {
+			 *   "<header-key-1>": <header-val-1>,
+			 *   "<header-key-N>": <header-val-N>,
+			 *   "paths": [{path-1}, {path-N}]
+			 * }
+			 */
 			if (json_detail_header && json_paths != NULL) {
 				const struct prefix_rd *prd;
 
+				/* Start per-prefix dictionary */
 				vty_out(vty, "{\n");
 
 				prd = bgp_rd_from_dest(dest, safi);
@@ -11641,6 +11649,7 @@ static int bgp_show_table(struct vty *vty, struct bgp *bgp, safi_t safi,
 			 */
 			vty_json_no_pretty(vty, json_paths);
 
+			/* End per-prefix dictionary */
 			if (json_detail_header_used)
 				vty_out(vty, "} ");
 
@@ -13346,11 +13355,11 @@ static void bgp_table_stats_rn(struct bgp_dest *dest, struct bgp_dest *top,
 	}
 }
 
-static void bgp_table_stats_walker(struct thread *t)
+static void bgp_table_stats_walker(struct event *t)
 {
 	struct bgp_dest *dest, *ndest;
 	struct bgp_dest *top;
-	struct bgp_table_stats *ts = THREAD_ARG(t);
+	struct bgp_table_stats *ts = EVENT_ARG(t);
 	unsigned int space = 0;
 
 	if (!(top = bgp_table_top(ts->table)))
@@ -13445,7 +13454,7 @@ static int bgp_table_stats_single(struct vty *vty, struct bgp *bgp, afi_t afi,
 
 	memset(&ts, 0, sizeof(ts));
 	ts.table = bgp->rib[afi][safi];
-	thread_execute(bm->master, bgp_table_stats_walker, &ts, 0);
+	event_execute(bm->master, bgp_table_stats_walker, &ts, 0);
 
 	for (i = 0; i < BGP_STATS_MAX; i++) {
 		if ((!json && !table_stats_strs[i][TABLE_STATS_IDX_VTY])
@@ -13743,11 +13752,11 @@ static void bgp_peer_count_proc(struct bgp_dest *rn, struct peer_pcounts *pc)
 	}
 }
 
-static void bgp_peer_count_walker(struct thread *t)
+static void bgp_peer_count_walker(struct event *t)
 {
 	struct bgp_dest *rn, *rm;
 	const struct bgp_table *table;
-	struct peer_pcounts *pc = THREAD_ARG(t);
+	struct peer_pcounts *pc = EVENT_ARG(t);
 
 	if (pc->safi == SAFI_MPLS_VPN || pc->safi == SAFI_ENCAP
 	    || pc->safi == SAFI_EVPN) {
@@ -13802,7 +13811,7 @@ static int bgp_peer_counts(struct vty *vty, struct peer *peer, afi_t afi,
 	 * stats for the thread-walk (i.e. ensure this can't be blamed on
 	 * on just vty_read()).
 	 */
-	thread_execute(bm->master, bgp_peer_count_walker, &pcounts, 0);
+	event_execute(bm->master, bgp_peer_count_walker, &pcounts, 0);
 
 	if (use_json) {
 		json_object_string_add(json, "prefixCountsFor", peer->host);

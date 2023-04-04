@@ -461,7 +461,8 @@ route_match_ip_address(void *rule, const struct prefix *prefix, void *object)
 	if (prefix->family == AF_INET) {
 		alist = access_list_lookup(AFI_IP, (char *)rule);
 		if (alist == NULL) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Access-List Specified: %s does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -521,7 +522,8 @@ route_match_ip_next_hop(void *rule, const struct prefix *prefix, void *object)
 
 		alist = access_list_lookup(AFI_IP, (char *)rule);
 		if (alist == NULL) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Access-List Specified: %s does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -581,7 +583,8 @@ route_match_ip_route_source(void *rule, const struct prefix *pfx, void *object)
 
 		alist = access_list_lookup(AFI_IP, (char *)rule);
 		if (alist == NULL) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Access-List Specified: %s does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -676,7 +679,7 @@ route_match_address_prefix_list(void *rule, afi_t afi,
 
 	plist = prefix_list_lookup(afi, (char *)rule);
 	if (plist == NULL) {
-		if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+		if (unlikely(CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL)))
 			zlog_debug(
 				"%s: Prefix List %s specified does not exist defaulting to NO_MATCH",
 				__func__, (char *)rule);
@@ -737,7 +740,8 @@ route_match_ip_next_hop_prefix_list(void *rule, const struct prefix *prefix,
 
 		plist = prefix_list_lookup(AFI_IP, (char *)rule);
 		if (plist == NULL) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Prefix List %s specified does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -786,7 +790,8 @@ route_match_ipv6_next_hop_prefix_list(void *rule, const struct prefix *prefix,
 
 		plist = prefix_list_lookup(AFI_IP6, (char *)rule);
 		if (!plist) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Prefix List %s specified does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -891,7 +896,8 @@ route_match_ip_route_source_prefix_list(void *rule, const struct prefix *prefix,
 
 		plist = prefix_list_lookup(AFI_IP, (char *)rule);
 		if (plist == NULL) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Prefix List %s specified does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -956,7 +962,7 @@ route_match_mac_address(void *rule, const struct prefix *prefix, void *object)
 
 	alist = access_list_lookup(AFI_L2VPN, (char *)rule);
 	if (alist == NULL) {
-		if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+		if (unlikely(CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL)))
 			zlog_debug(
 				"%s: Access-List Specified: %s does not exist defaulting to NO_MATCH",
 				__func__, (char *)rule);
@@ -964,7 +970,7 @@ route_match_mac_address(void *rule, const struct prefix *prefix, void *object)
 		return RMAP_NOMATCH;
 	}
 	if (prefix->u.prefix_evpn.route_type != BGP_EVPN_MAC_IP_ROUTE) {
-		if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+		if (unlikely(CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL)))
 			zlog_debug(
 				"%s: Prefix %pFX is not a EVPN MAC IP ROUTE defaulting to NO_MATCH",
 				__func__, prefix);
@@ -3242,7 +3248,8 @@ route_match_ipv6_address(void *rule, const struct prefix *prefix, void *object)
 	if (prefix->family == AF_INET6) {
 		alist = access_list_lookup(AFI_IP6, (char *)rule);
 		if (alist == NULL) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Access-List Specified: %s does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -3299,7 +3306,8 @@ route_match_ipv6_next_hop(void *rule, const struct prefix *prefix, void *object)
 
 		alist = access_list_lookup(AFI_IP6, (char *)rule);
 		if (!alist) {
-			if (CHECK_FLAG(rmap_debug, DEBUG_ROUTEMAP_DETAIL))
+			if (unlikely(CHECK_FLAG(rmap_debug,
+						DEBUG_ROUTEMAP_DETAIL)))
 				zlog_debug(
 					"%s: Access-List Specified: %s does not exist defaulting to NO_MATCH",
 					__func__, (char *)rule);
@@ -4266,8 +4274,8 @@ static void bgp_route_map_process_update(struct bgp *bgp, const char *rmap_name,
 						inet_ntop(bn_p->family,
 							  &bn_p->u.prefix, buf,
 							  sizeof(buf)));
-				bgp_aggregate_route(bgp, bn_p, afi, safi,
-						    aggregate);
+				(void)bgp_aggregate_route(bgp, bn_p, afi, safi,
+							  aggregate);
 			}
 		}
 	}
@@ -4344,7 +4352,7 @@ static void bgp_route_map_process_update_cb(char *rmap_name)
 	vpn_policy_routemap_event(rmap_name);
 }
 
-void bgp_route_map_update_timer(struct thread *thread)
+void bgp_route_map_update_timer(struct event *thread)
 {
 	route_map_walk_update_list(bgp_route_map_process_update_cb);
 }
@@ -4357,13 +4365,12 @@ static void bgp_route_map_mark_update(const char *rmap_name)
 	/* If new update is received before the current timer timed out,
 	 * turn it off and start a new timer.
 	 */
-	THREAD_OFF(bm->t_rmap_update);
+	EVENT_OFF(bm->t_rmap_update);
 
 	/* rmap_update_timer of 0 means don't do route updates */
 	if (bm->rmap_update_timer) {
-		thread_add_timer(bm->master, bgp_route_map_update_timer,
-				 NULL, bm->rmap_update_timer,
-				 &bm->t_rmap_update);
+		event_add_timer(bm->master, bgp_route_map_update_timer, NULL,
+				bm->rmap_update_timer, &bm->t_rmap_update);
 
 		/* Signal the groups that a route-map update event has
 		 * started */
@@ -5512,7 +5519,7 @@ DEFUN_YANG (set_ip_nexthop_unchanged,
 
 DEFUN_YANG (set_distance,
 	    set_distance_cmd,
-	    "set distance (0-255)",
+	    "set distance (1-255)",
 	    SET_STR
 	    "BGP Administrative Distance to use\n"
 	    "Distance value\n")
@@ -5531,7 +5538,7 @@ DEFUN_YANG (set_distance,
 
 DEFUN_YANG (no_set_distance,
 	    no_set_distance_cmd,
-	    "no set distance [(0-255)]",
+	    "no set distance [(1-255)]",
 	    NO_STR SET_STR
 	    "BGP Administrative Distance to use\n"
 	    "Distance value\n")

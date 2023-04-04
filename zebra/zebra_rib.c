@@ -18,7 +18,7 @@
 #include "sockunion.h"
 #include "srcdest_table.h"
 #include "table.h"
-#include "thread.h"
+#include "frrevent.h"
 #include "vrf.h"
 #include "workqueue.h"
 #include "nexthop_group_private.h"
@@ -56,7 +56,7 @@ DEFINE_MTYPE_STATIC(ZEBRA, WQ_WRAPPER, "WQ wrapper");
  * Event, list, and mutex for delivery of dataplane results
  */
 static pthread_mutex_t dplane_mutex;
-static struct thread *t_dplane;
+static struct event *t_dplane;
 static struct dplane_ctx_list_head rib_dplane_q;
 
 DEFINE_HOOK(rib_update, (struct route_node * rn, const char *reason),
@@ -632,7 +632,7 @@ void rib_install_kernel(struct route_node *rn, struct route_entry *re,
 {
 	struct nexthop *nexthop;
 	struct rib_table_info *info = srcdest_rnode_table_info(rn);
-	struct zebra_vrf *zvrf = vrf_info_lookup(re->vrf_id);
+	struct zebra_vrf *zvrf = zebra_vrf_lookup_by_id(re->vrf_id);
 	const struct prefix *p, *src_p;
 	enum zebra_dplane_result ret;
 
@@ -715,7 +715,7 @@ void rib_uninstall_kernel(struct route_node *rn, struct route_entry *re)
 {
 	struct nexthop *nexthop;
 	struct rib_table_info *info = srcdest_rnode_table_info(rn);
-	struct zebra_vrf *zvrf = vrf_info_lookup(re->vrf_id);
+	struct zebra_vrf *zvrf = zebra_vrf_lookup_by_id(re->vrf_id);
 
 	if (info->safi != SAFI_UNICAST) {
 		UNSET_FLAG(re->status, ROUTE_ENTRY_INSTALLED);
@@ -1410,7 +1410,7 @@ static void rib_process(struct route_node *rn)
 static void zebra_rib_evaluate_mpls(struct route_node *rn)
 {
 	rib_dest_t *dest = rib_dest_from_rnode(rn);
-	struct zebra_vrf *zvrf = vrf_info_lookup(VRF_DEFAULT);
+	struct zebra_vrf *zvrf = zebra_vrf_lookup_by_id(VRF_DEFAULT);
 
 	if (!dest)
 		return;
@@ -1898,7 +1898,7 @@ static void rib_process_result(struct zebra_dplane_ctx *ctx)
 	struct rib_table_info *info;
 	bool rt_delete = false;
 
-	zvrf = vrf_info_lookup(dplane_ctx_get_vrf(ctx));
+	zvrf = zebra_vrf_lookup_by_id(dplane_ctx_get_vrf(ctx));
 	vrf = vrf_lookup_by_id(dplane_ctx_get_vrf(ctx));
 
 	/* Locate rn and re(s) from ctx */
@@ -2566,7 +2566,7 @@ static void process_subq_early_label(struct listnode *lnode)
 	if (!w)
 		return;
 
-	zvrf = vrf_info_lookup(w->vrf_id);
+	zvrf = zebra_vrf_lookup_by_id(w->vrf_id);
 	if (!zvrf) {
 		XFREE(MTYPE_WQ_WRAPPER, w);
 		return;
@@ -4393,11 +4393,11 @@ static void rib_update_ctx_fini(struct rib_update_ctx **ctx)
 	XFREE(MTYPE_RIB_UPDATE_CTX, *ctx);
 }
 
-static void rib_update_handler(struct thread *thread)
+static void rib_update_handler(struct event *thread)
 {
 	struct rib_update_ctx *ctx;
 
-	ctx = THREAD_ARG(thread);
+	ctx = EVENT_ARG(thread);
 
 	rib_update_handle_vrf_all(ctx->event, ZEBRA_ROUTE_ALL);
 
@@ -4408,20 +4408,39 @@ static void rib_update_handler(struct thread *thread)
  * Thread list to ensure we don't schedule a ton of events
  * if interfaces are flapping for instance.
  */
-static struct thread *t_rib_update_threads[RIB_UPDATE_MAX];
+static struct event *t_rib_update_threads[RIB_UPDATE_MAX];
+
+void rib_update_finish(void)
+{
+	int i;
+
+	for (i = RIB_UPDATE_KERNEL; i < RIB_UPDATE_MAX; i++) {
+		if (event_is_scheduled(t_rib_update_threads[i])) {
+			struct rib_update_ctx *ctx;
+
+			ctx = EVENT_ARG(t_rib_update_threads[i]);
+
+			rib_update_ctx_fini(&ctx);
+			EVENT_OFF(t_rib_update_threads[i]);
+		}
+	}
+}
 
 /* Schedule a RIB update event for all vrfs */
 void rib_update(enum rib_update_event event)
 {
 	struct rib_update_ctx *ctx;
 
-	if (thread_is_scheduled(t_rib_update_threads[event]))
+	if (event_is_scheduled(t_rib_update_threads[event]))
+		return;
+
+	if (zebra_router_in_shutdown())
 		return;
 
 	ctx = rib_update_ctx_init(0, event);
 
-	thread_add_event(zrouter.master, rib_update_handler, ctx, 0,
-			 &t_rib_update_threads[event]);
+	event_add_event(zrouter.master, rib_update_handler, ctx, 0,
+			&t_rib_update_threads[event]);
 
 	if (IS_ZEBRA_DEBUG_EVENT)
 		zlog_debug("%s: Scheduled VRF (ALL), event %s", __func__,
@@ -4494,7 +4513,7 @@ void rib_sweep_table(struct route_table *table)
 }
 
 /* Sweep all RIB tables.  */
-void rib_sweep_route(struct thread *t)
+void rib_sweep_route(struct event *t)
 {
 	struct vrf *vrf;
 	struct zebra_vrf *zvrf;
@@ -4606,7 +4625,7 @@ static void handle_pw_result(struct zebra_dplane_ctx *ctx)
  * Handle results from the dataplane system. Dequeue update context
  * structs, dispatch to appropriate internal handlers.
  */
-static void rib_process_dplane_results(struct thread *thread)
+static void rib_process_dplane_results(struct event *thread)
 {
 	struct zebra_dplane_ctx *ctx;
 	struct dplane_ctx_list_head ctxlist;
@@ -4793,8 +4812,8 @@ static int rib_dplane_results(struct dplane_ctx_list_head *ctxlist)
 	}
 
 	/* Ensure event is signalled to zebra main pthread */
-	thread_add_event(zrouter.master, rib_process_dplane_results, NULL, 0,
-			 &t_dplane);
+	event_add_event(zrouter.master, rib_process_dplane_results, NULL, 0,
+			&t_dplane);
 
 	return 0;
 }

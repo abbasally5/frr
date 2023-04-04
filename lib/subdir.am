@@ -38,8 +38,6 @@ lib_libfrr_la_SOURCES = \
 	lib/frrscript.c \
 	lib/frr_pthread.c \
 	lib/frrstr.c \
-	lib/getopt.c \
-	lib/getopt1.c \
 	lib/grammar_sandbox.c \
 	lib/graph.c \
 	lib/hash.c \
@@ -64,6 +62,9 @@ lib_libfrr_la_SOURCES = \
 	lib/log_vty.c \
 	lib/md5.c \
 	lib/memory.c \
+	lib/mgmt_be_client.c \
+	lib/mgmt_fe_client.c \
+	lib/mgmt_msg.c \
 	lib/mlag.c \
 	lib/module.c \
 	lib/mpls.c \
@@ -105,7 +106,7 @@ lib_libfrr_la_SOURCES = \
 	lib/systemd.c \
 	lib/table.c \
 	lib/termtable.c \
-	lib/thread.c \
+	lib/event.c \
 	lib/typerb.c \
 	lib/typesafe.c \
 	lib/vector.c \
@@ -146,6 +147,23 @@ nodist_lib_libfrr_la_SOURCES = \
 	yang/frr-module-translator.yang.c \
 	# end
 
+# Add logic to build mgmt.proto
+lib_libfrr_la_LIBADD += $(PROTOBUF_C_LIBS)
+
+BUILT_SOURCES += \
+	lib/mgmt.pb-c.c \
+	lib/mgmt.pb-c.h \
+	# end
+
+CLEANFILES += \
+	lib/mgmt.pb-c.h \
+	lib/mgmt.pb-c.c \
+	# end
+
+lib_libfrr_la_SOURCES += \
+	lib/mgmt.pb-c.c \
+	#end
+
 if SQLITE3
 lib_libfrr_la_LIBADD += $(SQLITE3_LIBS)
 lib_libfrr_la_SOURCES += lib/db.c
@@ -161,7 +179,7 @@ clippy_scan += \
 	lib/plist.c \
 	lib/routemap.c \
 	lib/routemap_cli.c \
-	lib/thread.c \
+	lib/event.c \
 	lib/vty.c \
 	lib/zlog_5424_cli.c \
 	# end
@@ -197,7 +215,6 @@ pkginclude_HEADERS += \
 	lib/frratomic.h \
 	lib/frrcu.h \
 	lib/frrstr.h \
-	lib/getopt.h \
 	lib/graph.h \
 	lib/hash.h \
 	lib/hook.h \
@@ -222,6 +239,11 @@ pkginclude_HEADERS += \
 	lib/log_vty.h \
 	lib/md5.h \
 	lib/memory.h \
+	lib/mgmt.pb-c.h \
+	lib/mgmt_be_client.h \
+	lib/mgmt_fe_client.h \
+	lib/mgmt_msg.h \
+	lib/mgmt_pb.h \
 	lib/module.h \
 	lib/monotime.h \
 	lib/mpls.h \
@@ -263,7 +285,7 @@ pkginclude_HEADERS += \
 	lib/systemd.h \
 	lib/table.h \
 	lib/termtable.h \
-	lib/thread.h \
+	lib/frrevent.h \
 	lib/trace.h \
 	lib/typerb.h \
 	lib/typesafe.h \

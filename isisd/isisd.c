@@ -9,7 +9,7 @@
 
 #include <zebra.h>
 
-#include "thread.h"
+#include "frrevent.h"
 #include "vty.h"
 #include "command.h"
 #include "log.h"
@@ -88,7 +88,7 @@ static struct isis_master isis_master;
 struct isis_master *im;
 
 /* ISIS config processing thread */
-struct thread *t_isis_cfg;
+struct event *t_isis_cfg;
 
 #ifndef FABRICD
 DEFINE_HOOK(isis_hook_db_overload, (const struct isis_area *area), (area));
@@ -166,7 +166,7 @@ struct isis *isis_lookup_by_sysid(const uint8_t *sysid)
 	return NULL;
 }
 
-void isis_master_init(struct thread_master *master)
+void isis_master_init(struct event_loop *master)
 {
 	memset(&isis_master, 0, sizeof(isis_master));
 	im = &isis_master;
@@ -325,7 +325,7 @@ struct isis_area *isis_area_create(const char *area_tag, const char *vrf_name)
 	area->area_addrs->del = delete_area_addr;
 
 	if (!CHECK_FLAG(im->options, F_ISIS_UNIT_TEST))
-		thread_add_timer(master, lsp_tick, area, 1, &area->t_tick);
+		event_add_timer(master, lsp_tick, area, 1, &area->t_tick);
 	flags_initialize(&area->flags);
 
 	isis_sr_area_init(area);
@@ -519,11 +519,11 @@ void isis_area_destroy(struct isis_area *area)
 	spftree_area_del(area);
 
 	if (area->spf_timer[0])
-		isis_spf_timer_free(THREAD_ARG(area->spf_timer[0]));
-	THREAD_OFF(area->spf_timer[0]);
+		isis_spf_timer_free(EVENT_ARG(area->spf_timer[0]));
+	EVENT_OFF(area->spf_timer[0]);
 	if (area->spf_timer[1])
-		isis_spf_timer_free(THREAD_ARG(area->spf_timer[1]));
-	THREAD_OFF(area->spf_timer[1]);
+		isis_spf_timer_free(EVENT_ARG(area->spf_timer[1]));
+	EVENT_OFF(area->spf_timer[1]);
 
 	spf_backoff_free(area->spf_delay_ietf[0]);
 	spf_backoff_free(area->spf_delay_ietf[1]);
@@ -543,12 +543,12 @@ void isis_area_destroy(struct isis_area *area)
 	isis_lfa_tiebreakers_clear(area, ISIS_LEVEL1);
 	isis_lfa_tiebreakers_clear(area, ISIS_LEVEL2);
 
-	THREAD_OFF(area->t_tick);
-	THREAD_OFF(area->t_lsp_refresh[0]);
-	THREAD_OFF(area->t_lsp_refresh[1]);
-	THREAD_OFF(area->t_rlfa_rib_update);
+	EVENT_OFF(area->t_tick);
+	EVENT_OFF(area->t_lsp_refresh[0]);
+	EVENT_OFF(area->t_lsp_refresh[1]);
+	EVENT_OFF(area->t_rlfa_rib_update);
 
-	thread_cancel_event(master, area);
+	event_cancel_event(master, area);
 
 	listnode_delete(area->isis->area_list, area);
 
@@ -2250,7 +2250,7 @@ static void isis_spf_ietf_common(struct vty *vty, struct isis *isis)
 			vty_out(vty, "  Level-%d:\n", level);
 			vty_out(vty, "    SPF delay status: ");
 			if (area->spf_timer[level - 1]) {
-				struct timeval remain = thread_timer_remain(
+				struct timeval remain = event_timer_remain(
 					area->spf_timer[level - 1]);
 				vty_out(vty, "Pending, due in %lld msec\n",
 					(long long)remain.tv_sec * 1000
@@ -2502,6 +2502,12 @@ static void common_isis_summary_vty(struct vty *vty, struct isis *isis)
 			area->lsp_rxmt_count);
 		vty_out(vty, "  RX counters per PDU type:\n");
 		pdu_counter_print(vty, "    ", area->pdu_rx_counters);
+
+		vty_out(vty, "  Drop counters per PDU type:\n");
+		pdu_counter_print(vty, "    ", area->pdu_drop_counters);
+
+		vty_out(vty, "  Advertise high metrics: %s\n",
+			area->advertise_high_metrics ? "Enabled" : "Disabled");
 
 		for (level = ISIS_LEVEL1; level <= ISIS_LEVELS; level++) {
 			if ((area->is_type & level) == 0)
@@ -3116,14 +3122,14 @@ static void area_resign_level(struct isis_area *area, int level)
 	}
 
 	if (area->spf_timer[level - 1])
-		isis_spf_timer_free(THREAD_ARG(area->spf_timer[level - 1]));
+		isis_spf_timer_free(EVENT_ARG(area->spf_timer[level - 1]));
 
-	THREAD_OFF(area->spf_timer[level - 1]);
+	EVENT_OFF(area->spf_timer[level - 1]);
 
 	sched_debug(
 		"ISIS (%s): Resigned from L%d - canceling LSP regeneration timer.",
 		area->area_tag, level);
-	THREAD_OFF(area->t_lsp_refresh[level - 1]);
+	EVENT_OFF(area->t_lsp_refresh[level - 1]);
 	area->lsp_regenerate_pending[level - 1] = 0;
 }
 
@@ -3212,7 +3218,7 @@ void isis_area_overload_bit_set(struct isis_area *area, bool overload_bit)
 		} else {
 			/* Cancel overload on startup timer if it's running */
 			if (area->t_overload_on_startup_timer) {
-				THREAD_OFF(area->t_overload_on_startup_timer);
+				EVENT_OFF(area->t_overload_on_startup_timer);
 				area->t_overload_on_startup_timer = NULL;
 			}
 		}
@@ -3244,6 +3250,58 @@ void config_end_lsp_generate(struct isis_area *area)
 			lsp_generate(area, IS_LEVEL_1);
 		if (CHECK_FLAG(area->is_type, IS_LEVEL_2))
 			lsp_generate(area, IS_LEVEL_2);
+	}
+}
+
+void isis_area_advertise_high_metrics_set(struct isis_area *area,
+					  bool advertise_high_metrics)
+{
+	struct listnode *node;
+	struct isis_circuit *circuit;
+	int max_metric;
+	char xpath[XPATH_MAXLEN];
+	struct lyd_node *dnode;
+	int configured_metric_l1;
+	int configured_metric_l2;
+
+	if (area->advertise_high_metrics == advertise_high_metrics)
+		return;
+
+	if (advertise_high_metrics) {
+		if (area->oldmetric && area->newmetric)
+			max_metric = ISIS_NARROW_METRIC_INFINITY;
+		else if (area->newmetric)
+			max_metric = MAX_WIDE_LINK_METRIC;
+		else
+			max_metric = MAX_NARROW_LINK_METRIC;
+
+		for (ALL_LIST_ELEMENTS_RO(area->circuit_list, node, circuit)) {
+			isis_circuit_metric_set(circuit, IS_LEVEL_1,
+						max_metric);
+			isis_circuit_metric_set(circuit, IS_LEVEL_2,
+						max_metric);
+		}
+
+		area->advertise_high_metrics = true;
+	} else {
+		area->advertise_high_metrics = false;
+		for (ALL_LIST_ELEMENTS_RO(area->circuit_list, node, circuit)) {
+			/* Get configured metric */
+			snprintf(xpath, XPATH_MAXLEN,
+				 "/frr-interface:lib/interface[name='%s']",
+				 circuit->interface->name);
+			dnode = yang_dnode_get(running_config->dnode, xpath);
+
+			configured_metric_l1 = yang_dnode_get_uint32(
+				dnode, "./frr-isisd:isis/metric/level-1");
+			configured_metric_l2 = yang_dnode_get_uint32(
+				dnode, "./frr-isisd:isis/metric/level-2");
+
+			isis_circuit_metric_set(circuit, IS_LEVEL_1,
+						configured_metric_l1);
+			isis_circuit_metric_set(circuit, IS_LEVEL_2,
+						configured_metric_l2);
+		}
 	}
 }
 

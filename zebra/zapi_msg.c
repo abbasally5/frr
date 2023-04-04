@@ -121,8 +121,6 @@ static int zserv_encode_nexthop(struct stream *s, struct nexthop *nexthop)
 		stream_putl(s, nexthop->ifindex);
 		break;
 	case NEXTHOP_TYPE_IPV6:
-		stream_put(s, &nexthop->gate.ipv6, 16);
-		break;
 	case NEXTHOP_TYPE_IPV6_IFINDEX:
 		stream_put(s, &nexthop->gate.ipv6, 16);
 		stream_putl(s, nexthop->ifindex);
@@ -1332,7 +1330,7 @@ static void zread_fec_register(ZAPI_HANDLER_ARGS)
 	uint32_t label_index = MPLS_INVALID_LABEL_INDEX;
 
 	s = msg;
-	zvrf = vrf_info_lookup(VRF_DEFAULT);
+	zvrf = zebra_vrf_lookup_by_id(VRF_DEFAULT);
 	if (!zvrf)
 		return;
 
@@ -1395,7 +1393,7 @@ static void zread_fec_unregister(ZAPI_HANDLER_ARGS)
 	uint16_t flags;
 
 	s = msg;
-	zvrf = vrf_info_lookup(VRF_DEFAULT);
+	zvrf = zebra_vrf_lookup_by_id(VRF_DEFAULT);
 	if (!zvrf)
 		return;
 
@@ -2339,7 +2337,7 @@ void zsend_capabilities_all_clients(void)
 	struct zebra_vrf *zvrf;
 	struct zserv *client;
 
-	zvrf = vrf_info_lookup(VRF_DEFAULT);
+	zvrf = zebra_vrf_lookup_by_id(VRF_DEFAULT);
 	for (ALL_LIST_ELEMENTS(zrouter.client_list, node, nnode, client)) {
 		/* Do not send unsolicited messages to synchronous clients. */
 		if (client->synchronous)

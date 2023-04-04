@@ -3449,7 +3449,7 @@ int zebra_vxlan_clear_dup_detect_vni_mac(struct zebra_vrf *zvrf, vni_t vni,
 	mac->detect_start_time.tv_sec = 0;
 	mac->detect_start_time.tv_usec = 0;
 	mac->dad_dup_detect_time = 0;
-	THREAD_OFF(mac->dad_mac_auto_recovery_timer);
+	EVENT_OFF(mac->dad_mac_auto_recovery_timer);
 
 	/* warn-only action return */
 	if (!zvrf->dad_freeze)
@@ -3531,7 +3531,7 @@ int zebra_vxlan_clear_dup_detect_vni_ip(struct zebra_vrf *zvrf, vni_t vni,
 	nbr->detect_start_time.tv_sec = 0;
 	nbr->detect_start_time.tv_usec = 0;
 	nbr->dad_dup_detect_time = 0;
-	THREAD_OFF(nbr->dad_ip_auto_recovery_timer);
+	EVENT_OFF(nbr->dad_ip_auto_recovery_timer);
 
 	if (!!CHECK_FLAG(nbr->flags, ZEBRA_NEIGH_LOCAL)) {
 		zebra_evpn_neigh_send_add_to_client(zevpn->vni, ip, &nbr->emac,
@@ -3566,7 +3566,7 @@ static void zevpn_clear_dup_mac_hash(struct hash_bucket *bucket, void *ctxt)
 	mac->detect_start_time.tv_sec = 0;
 	mac->detect_start_time.tv_usec = 0;
 	mac->dad_dup_detect_time = 0;
-	THREAD_OFF(mac->dad_mac_auto_recovery_timer);
+	EVENT_OFF(mac->dad_mac_auto_recovery_timer);
 
 	/* Remove all IPs as duplicate associcated with this MAC */
 	for (ALL_LIST_ELEMENTS_RO(mac->neigh_list, node, nbr)) {
@@ -3819,6 +3819,8 @@ void zebra_vxlan_print_evpn(struct vty *vty, bool uj)
 		json_object_int_add(json, "detectionTime", zvrf->dad_time);
 		json_object_int_add(json, "detectionFreezeTime",
 				    zvrf->dad_freeze_time);
+		json_object_boolean_add(json, "isDetectionFreeze",
+					zvrf->dad_freeze);
 		zebra_evpn_mh_json(json);
 	} else {
 		vty_out(vty, "L2 VNIs: %u\n", num_l2vnis);

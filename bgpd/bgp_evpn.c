@@ -674,11 +674,9 @@ struct bgp_dest *bgp_evpn_global_node_get(struct bgp_table *table, afi_t afi,
 /*
  * Wrapper for node lookup in global table.
  */
-struct bgp_dest *
-bgp_evpn_global_node_lookup(struct bgp_table *table, afi_t afi, safi_t safi,
-			    const struct prefix_evpn *evp,
-			    struct prefix_rd *prd,
-			    const struct bgp_path_info *local_pi)
+struct bgp_dest *bgp_evpn_global_node_lookup(
+	struct bgp_table *table, safi_t safi, const struct prefix_evpn *evp,
+	struct prefix_rd *prd, const struct bgp_path_info *local_pi)
 {
 	struct prefix_evpn global_p;
 
@@ -709,7 +707,7 @@ bgp_evpn_global_node_lookup(struct bgp_table *table, afi_t afi, safi_t safi,
 
 		evp = &global_p;
 	}
-	return bgp_afi_node_lookup(table, afi, safi, (struct prefix *)evp, prd);
+	return bgp_safi_node_lookup(table, safi, (struct prefix *)evp, prd);
 }
 
 /*
@@ -1358,7 +1356,7 @@ static void evpn_delete_old_local_route(struct bgp *bgp, struct bgpevpn *vpn,
 	 * L3VPN routes.
 	 */
 	global_dest = bgp_evpn_global_node_lookup(
-		bgp->rib[afi][safi], afi, safi,
+		bgp->rib[afi][safi], safi,
 		(const struct prefix_evpn *)bgp_dest_get_prefix(dest),
 		&vpn->prd, old_local);
 	if (global_dest) {
@@ -1837,6 +1835,7 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 	struct bgp_path_info *tmp_pi;
 	struct bgp_path_info *local_pi;
 	struct attr *attr_new;
+	struct attr local_attr;
 	mpls_label_t label[BGP_MAX_LABELS];
 	uint32_t num_labels = 1;
 	int route_change = 1;
@@ -1870,13 +1869,15 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 		add_mac_mobility_to_attr(seq, attr);
 
 	if (!local_pi) {
-		/* Add (or update) attribute to hash. */
-		attr_new = bgp_attr_intern(attr);
+		local_attr = *attr;
 
 		/* Extract MAC mobility sequence number, if any. */
-		attr_new->mm_seqnum =
-			bgp_attr_mac_mobility_seqnum(attr_new, &sticky);
-		attr_new->sticky = sticky;
+		local_attr.mm_seqnum =
+			bgp_attr_mac_mobility_seqnum(&local_attr, &sticky);
+		local_attr.sticky = sticky;
+
+		/* Add (or update) attribute to hash. */
+		attr_new = bgp_attr_intern(&local_attr);
 
 		/* Create new route with its attribute. */
 		tmp_pi = info_make(ZEBRA_ROUTE_BGP, BGP_ROUTE_STATIC, 0,
@@ -1952,14 +1953,16 @@ static int update_evpn_route_entry(struct bgp *bgp, struct bgpevpn *vpn,
 
 			/* The attribute has changed. */
 			/* Add (or update) attribute to hash. */
-			attr_new = bgp_attr_intern(attr);
+			local_attr = *attr;
 			bgp_path_info_set_flag(dest, tmp_pi,
 					       BGP_PATH_ATTR_CHANGED);
 
 			/* Extract MAC mobility sequence number, if any. */
-			attr_new->mm_seqnum =
-				bgp_attr_mac_mobility_seqnum(attr_new, &sticky);
-			attr_new->sticky = sticky;
+			local_attr.mm_seqnum = bgp_attr_mac_mobility_seqnum(
+				&local_attr, &sticky);
+			local_attr.sticky = sticky;
+
+			attr_new = bgp_attr_intern(&local_attr);
 
 			/* Restore route, if needed. */
 			if (CHECK_FLAG(tmp_pi->flags, BGP_PATH_REMOVED))
@@ -2255,8 +2258,8 @@ static int delete_evpn_type5_route(struct bgp *bgp_vrf, struct prefix_evpn *evp)
 		return 0;
 
 	/* locate the global route entry for this type-5 prefix */
-	dest = bgp_evpn_global_node_lookup(bgp_evpn->rib[afi][safi], afi, safi,
-					   evp, &bgp_vrf->vrf_prd, NULL);
+	dest = bgp_evpn_global_node_lookup(bgp_evpn->rib[afi][safi], safi, evp,
+					   &bgp_vrf->vrf_prd, NULL);
 	if (!dest)
 		return 0;
 
@@ -2292,8 +2295,8 @@ static int delete_evpn_route(struct bgp *bgp, struct bgpevpn *vpn,
 	 * this table is a 2-level tree (RD-level + Prefix-level) similar to
 	 * L3VPN routes.
 	 */
-	global_dest = bgp_evpn_global_node_lookup(bgp->rib[afi][safi], afi,
-						  safi, p, &vpn->prd, NULL);
+	global_dest = bgp_evpn_global_node_lookup(bgp->rib[afi][safi], safi, p,
+						  &vpn->prd, NULL);
 	if (global_dest) {
 		/* Delete route entry in the global EVPN table. */
 		delete_evpn_route_entry(bgp, afi, safi, global_dest, &pi);
@@ -4312,8 +4315,8 @@ static int delete_withdraw_vni_routes(struct bgp *bgp, struct bgpevpn *vpn)
 
 	/* Remove type-3 route for this VNI from global table. */
 	build_evpn_type3_prefix(&p, vpn->originator_ip);
-	global_dest = bgp_evpn_global_node_lookup(bgp->rib[afi][safi], afi,
-						  safi, &p, &vpn->prd, NULL);
+	global_dest = bgp_evpn_global_node_lookup(bgp->rib[afi][safi], safi, &p,
+						  &vpn->prd, NULL);
 	if (global_dest) {
 		/* Delete route entry in the global EVPN table. */
 		delete_evpn_route_entry(bgp, afi, safi, global_dest, &pi);
@@ -6647,20 +6650,20 @@ void bgp_evpn_cleanup(struct bgp *bgp)
 		     (void (*)(struct hash_bucket *, void *))free_vni_entry,
 		     bgp);
 
-	hash_clean(bgp->import_rt_hash, (void (*)(void *))hash_import_rt_free);
-	hash_free(bgp->import_rt_hash);
-	bgp->import_rt_hash = NULL;
+	hash_clean_and_free(&bgp->import_rt_hash,
+			    (void (*)(void *))hash_import_rt_free);
 
-	hash_clean(bgp->vrf_import_rt_hash,
-		   (void (*)(void *))hash_vrf_import_rt_free);
-	hash_free(bgp->vrf_import_rt_hash);
-	bgp->vrf_import_rt_hash = NULL;
+	hash_clean_and_free(&bgp->vrf_import_rt_hash,
+			    (void (*)(void *))hash_vrf_import_rt_free);
 
-	hash_clean(bgp->vni_svi_hash, (void (*)(void *))hash_evpn_free);
-	hash_free(bgp->vni_svi_hash);
-	bgp->vni_svi_hash = NULL;
-	hash_free(bgp->vnihash);
-	bgp->vnihash = NULL;
+	hash_clean_and_free(&bgp->vni_svi_hash,
+			    (void (*)(void *))hash_evpn_free);
+
+	/*
+	 * Why is the vnihash freed at the top of this function and
+	 * then deleted here?
+	 */
+	hash_clean_and_free(&bgp->vnihash, NULL);
 
 	list_delete(&bgp->vrf_import_rtl);
 	list_delete(&bgp->vrf_export_rtl);

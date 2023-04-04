@@ -11,7 +11,7 @@
 #include <zebra.h>
 
 #include "memory.h"
-#include "thread.h"
+#include "frrevent.h"
 #include "linklist.h"
 #include "log.h"
 #include "stream.h"
@@ -192,9 +192,9 @@ static int process_p2p_hello(struct iih_info *iih)
 				      adj);
 
 	/* lets take care of the expiry */
-	THREAD_OFF(adj->t_expire);
-	thread_add_timer(master, isis_adj_expire, adj, (long)adj->hold_time,
-			 &adj->t_expire);
+	EVENT_OFF(adj->t_expire);
+	event_add_timer(master, isis_adj_expire, adj, (long)adj->hold_time,
+			&adj->t_expire);
 
 	/* While fabricds initial sync is in progress, ignore hellos from other
 	 * interfaces than the one we are performing the initial sync on. */
@@ -466,8 +466,8 @@ static int process_lan_hello(struct iih_info *iih)
 				       : iih->circuit->u.bc.l2_desig_is;
 
 		if (memcmp(dis, iih->dis, ISIS_SYS_ID_LEN + 1)) {
-			thread_add_event(master, isis_event_dis_status_change,
-					 iih->circuit, 0, NULL);
+			event_add_event(master, isis_event_dis_status_change,
+					iih->circuit, 0, NULL);
 			memcpy(dis, iih->dis, ISIS_SYS_ID_LEN + 1);
 		}
 	}
@@ -484,9 +484,9 @@ static int process_lan_hello(struct iih_info *iih)
 				      adj);
 
 	/* lets take care of the expiry */
-	THREAD_OFF(adj->t_expire);
-	thread_add_timer(master, isis_adj_expire, adj, (long)adj->hold_time,
-			 &adj->t_expire);
+	EVENT_OFF(adj->t_expire);
+	event_add_timer(master, isis_adj_expire, adj, (long)adj->hold_time,
+			&adj->t_expire);
 
 	/*
 	 * If the snpa for this circuit is found from LAN Neighbours TLV
@@ -1654,12 +1654,14 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 	if (idrp == ISO9542_ESIS) {
 		flog_err(EC_LIB_DEVELOPMENT,
 			 "No support for ES-IS packet IDRP=%hhx", idrp);
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
 
 	if (idrp != ISO10589_ISIS) {
 		flog_err(EC_ISIS_PACKET, "Not an IS-IS packet IDRP=%hhx",
 			 idrp);
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
 
@@ -1670,6 +1672,7 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		isis_notif_version_skew(circuit, version1, raw_pdu,
 					sizeof(raw_pdu));
 #endif /* ifndef FABRICD */
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_WARNING;
 	}
 
@@ -1693,12 +1696,14 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		isis_notif_id_len_mismatch(circuit, id_len, raw_pdu,
 					   sizeof(raw_pdu));
 #endif /* ifndef FABRICD */
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
 
 	uint8_t expected_length;
 	if (pdu_size(pdu_type, &expected_length)) {
 		zlog_warn("Unsupported ISIS PDU %hhu", pdu_type);
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_WARNING;
 	}
 
@@ -1706,6 +1711,7 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		flog_err(EC_ISIS_PACKET,
 			 "Expected fixed header length = %hhu but got %hhu",
 			 expected_length, length);
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
 
@@ -1713,6 +1719,7 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		flog_err(
 			EC_ISIS_PACKET,
 			"PDU is too short to contain fixed header of given PDU type.");
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
 
@@ -1723,12 +1730,14 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		isis_notif_version_skew(circuit, version2, raw_pdu,
 					sizeof(raw_pdu));
 #endif /* ifndef FABRICD */
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_WARNING;
 	}
 
 	if (circuit->is_passive) {
 		zlog_warn("Received ISIS PDU on passive circuit %s",
 			  circuit->interface->name);
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_WARNING;
 	}
 
@@ -1747,6 +1756,7 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		isis_notif_max_area_addr_mismatch(circuit, max_area_addrs,
 						  raw_pdu, sizeof(raw_pdu));
 #endif /* ifndef FABRICD */
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
 
@@ -1754,17 +1764,24 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 	case L1_LAN_HELLO:
 	case L2_LAN_HELLO:
 	case P2P_HELLO:
-		if (fabricd && pdu_type != P2P_HELLO)
+		if (fabricd && pdu_type != P2P_HELLO) {
+			pdu_counter_count(circuit->area->pdu_drop_counters,
+					  pdu_type);
 			return ISIS_ERROR;
+		}
+
 		retval = process_hello(pdu_type, circuit, ssnpa);
 		break;
 	case L1_LINK_STATE:
 	case L2_LINK_STATE:
 	case FS_LINK_STATE:
-		if (fabricd
-		    && pdu_type != L2_LINK_STATE
-		    && pdu_type != FS_LINK_STATE)
+		if (fabricd && pdu_type != L2_LINK_STATE &&
+		    pdu_type != FS_LINK_STATE) {
+			pdu_counter_count(circuit->area->pdu_drop_counters,
+					  pdu_type);
 			return ISIS_ERROR;
+		}
+
 		retval = process_lsp(pdu_type, circuit, ssnpa, max_area_addrs);
 		break;
 	case L1_COMPLETE_SEQ_NUM:
@@ -1774,13 +1791,17 @@ int isis_handle_pdu(struct isis_circuit *circuit, uint8_t *ssnpa)
 		retval = process_snp(pdu_type, circuit, ssnpa);
 		break;
 	default:
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 		return ISIS_ERROR;
 	}
+
+	if (retval != ISIS_OK)
+		pdu_counter_count(circuit->area->pdu_drop_counters, pdu_type);
 
 	return retval;
 }
 
-void isis_receive(struct thread *thread)
+void isis_receive(struct event *thread)
 {
 	struct isis_circuit *circuit;
 	uint8_t ssnpa[ETH_ALEN];
@@ -1788,7 +1809,7 @@ void isis_receive(struct thread *thread)
 	/*
 	 * Get the circuit
 	 */
-	circuit = THREAD_ARG(thread);
+	circuit = EVENT_ARG(thread);
 	assert(circuit);
 
 	circuit->t_read = NULL;
@@ -1964,8 +1985,14 @@ int send_hello(struct isis_circuit *circuit, int level)
 		isis_tlvs_add_global_ipv6_addresses(tlvs,
 						    circuit->ipv6_non_link);
 
+	bool should_pad_hello =
+		circuit->pad_hellos == ISIS_HELLO_PADDING_ALWAYS ||
+		(circuit->pad_hellos ==
+			 ISIS_HELLO_PADDING_DURING_ADJACENCY_FORMATION &&
+		 circuit->upadjcount[0] + circuit->upadjcount[1] == 0);
+
 	if (isis_pack_tlvs(tlvs, circuit->snd_stream, len_pointer,
-			   circuit->pad_hellos, false)) {
+			   should_pad_hello, false)) {
 		isis_free_tlvs(tlvs);
 		return ISIS_WARNING; /* XXX: Maybe Log TLV structure? */
 	}
@@ -2003,9 +2030,9 @@ int send_hello(struct isis_circuit *circuit, int level)
 	return retval;
 }
 
-static void send_hello_cb(struct thread *thread)
+static void send_hello_cb(struct event *thread)
 {
-	struct isis_circuit_arg *arg = THREAD_ARG(thread);
+	struct isis_circuit_arg *arg = EVENT_ARG(thread);
 	assert(arg);
 
 	struct isis_circuit *circuit = arg->circuit;
@@ -2044,20 +2071,18 @@ static void send_hello_cb(struct thread *thread)
 }
 
 static void _send_hello_sched(struct isis_circuit *circuit,
-			      struct thread **threadp,
-			      int level, long delay)
+			      struct event **threadp, int level, long delay)
 {
 	if (*threadp) {
-		if (thread_timer_remain_msec(*threadp) < (unsigned long)delay)
+		if (event_timer_remain_msec(*threadp) < (unsigned long)delay)
 			return;
 
-		THREAD_OFF(*threadp);
+		EVENT_OFF(*threadp);
 	}
 
-	thread_add_timer_msec(master, send_hello_cb,
-			      &circuit->level_arg[level - 1],
-			      isis_jitter(delay, IIH_JITTER),
-			      threadp);
+	event_add_timer_msec(master, send_hello_cb,
+			     &circuit->level_arg[level - 1],
+			     isis_jitter(delay, IIH_JITTER), threadp);
 }
 
 void send_hello_sched(struct isis_circuit *circuit, int level, long delay)
@@ -2234,11 +2259,11 @@ int send_csnp(struct isis_circuit *circuit, int level)
 	return ISIS_OK;
 }
 
-void send_l1_csnp(struct thread *thread)
+void send_l1_csnp(struct event *thread)
 {
 	struct isis_circuit *circuit;
 
-	circuit = THREAD_ARG(thread);
+	circuit = EVENT_ARG(thread);
 	assert(circuit);
 
 	circuit->t_send_csnp[0] = NULL;
@@ -2249,16 +2274,16 @@ void send_l1_csnp(struct thread *thread)
 		send_csnp(circuit, 1);
 	}
 	/* set next timer thread */
-	thread_add_timer(master, send_l1_csnp, circuit,
-			 isis_jitter(circuit->csnp_interval[0], CSNP_JITTER),
-			 &circuit->t_send_csnp[0]);
+	event_add_timer(master, send_l1_csnp, circuit,
+			isis_jitter(circuit->csnp_interval[0], CSNP_JITTER),
+			&circuit->t_send_csnp[0]);
 }
 
-void send_l2_csnp(struct thread *thread)
+void send_l2_csnp(struct event *thread)
 {
 	struct isis_circuit *circuit;
 
-	circuit = THREAD_ARG(thread);
+	circuit = EVENT_ARG(thread);
 	assert(circuit);
 
 	circuit->t_send_csnp[1] = NULL;
@@ -2269,9 +2294,9 @@ void send_l2_csnp(struct thread *thread)
 		send_csnp(circuit, 2);
 	}
 	/* set next timer thread */
-	thread_add_timer(master, send_l2_csnp, circuit,
-			 isis_jitter(circuit->csnp_interval[1], CSNP_JITTER),
-			 &circuit->t_send_csnp[1]);
+	event_add_timer(master, send_l2_csnp, circuit,
+			isis_jitter(circuit->csnp_interval[1], CSNP_JITTER),
+			&circuit->t_send_csnp[1]);
 }
 
 /*
@@ -2388,32 +2413,32 @@ static int send_psnp(int level, struct isis_circuit *circuit)
 	return ISIS_OK;
 }
 
-void send_l1_psnp(struct thread *thread)
+void send_l1_psnp(struct event *thread)
 {
 
 	struct isis_circuit *circuit;
 
-	circuit = THREAD_ARG(thread);
+	circuit = EVENT_ARG(thread);
 	assert(circuit);
 
 	circuit->t_send_psnp[0] = NULL;
 
 	send_psnp(1, circuit);
 	/* set next timer thread */
-	thread_add_timer(master, send_l1_psnp, circuit,
-			 isis_jitter(circuit->psnp_interval[0], PSNP_JITTER),
-			 &circuit->t_send_psnp[0]);
+	event_add_timer(master, send_l1_psnp, circuit,
+			isis_jitter(circuit->psnp_interval[0], PSNP_JITTER),
+			&circuit->t_send_psnp[0]);
 }
 
 /*
  *  7.3.15.4 action on expiration of partial SNP interval
  *  level 2
  */
-void send_l2_psnp(struct thread *thread)
+void send_l2_psnp(struct event *thread)
 {
 	struct isis_circuit *circuit;
 
-	circuit = THREAD_ARG(thread);
+	circuit = EVENT_ARG(thread);
 	assert(circuit);
 
 	circuit->t_send_psnp[1] = NULL;
@@ -2421,9 +2446,9 @@ void send_l2_psnp(struct thread *thread)
 	send_psnp(2, circuit);
 
 	/* set next timer thread */
-	thread_add_timer(master, send_l2_psnp, circuit,
-			 isis_jitter(circuit->psnp_interval[1], PSNP_JITTER),
-			 &circuit->t_send_psnp[1]);
+	event_add_timer(master, send_l2_psnp, circuit,
+			isis_jitter(circuit->psnp_interval[1], PSNP_JITTER),
+			&circuit->t_send_psnp[1]);
 }
 
 /*

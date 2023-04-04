@@ -6,7 +6,7 @@
 
 #include <zebra.h>
 
-#include "thread.h"
+#include "frrevent.h"
 #include "memory.h"
 #include "linklist.h"
 #include "prefix.h"
@@ -264,9 +264,9 @@ void ospf_asbr_status_update(struct ospf *ospf, uint8_t status)
 /* If there's redistribution configured, we need to refresh external
  * LSAs in order to install Type-7 and flood to all NSSA Areas
  */
-static void ospf_asbr_nssa_redist_update_timer(struct thread *thread)
+static void ospf_asbr_nssa_redist_update_timer(struct event *thread)
 {
-	struct ospf *ospf = THREAD_ARG(thread);
+	struct ospf *ospf = EVENT_ARG(thread);
 	int type;
 
 	ospf->t_asbr_nssa_redist_update = NULL;
@@ -297,9 +297,9 @@ void ospf_schedule_asbr_nssa_redist_update(struct ospf *ospf)
 	if (IS_DEBUG_OSPF_EVENT)
 		zlog_debug("Scheduling ASBR NSSA redistribution update");
 
-	thread_add_timer(master, ospf_asbr_nssa_redist_update_timer, ospf,
-			 OSPF_ASBR_NSSA_REDIST_UPDATE_DELAY,
-			 &ospf->t_asbr_nssa_redist_update);
+	event_add_timer(master, ospf_asbr_nssa_redist_update_timer, ospf,
+			OSPF_ASBR_NSSA_REDIST_UPDATE_DELAY,
+			&ospf->t_asbr_nssa_redist_update);
 }
 
 void ospf_redistribute_withdraw(struct ospf *ospf, uint8_t type,
@@ -450,15 +450,12 @@ static void ospf_aggr_unlink_external_info(void *data)
 
 void ospf_external_aggregator_free(struct ospf_external_aggr_rt *aggr)
 {
-	if (OSPF_EXTERNAL_RT_COUNT(aggr))
-		hash_clean(aggr->match_extnl_hash,
-			   (void *)ospf_aggr_unlink_external_info);
+	hash_clean_and_free(&aggr->match_extnl_hash,
+			    (void *)ospf_aggr_unlink_external_info);
 
 	if (IS_DEBUG_OSPF(lsa, EXTNL_LSA_AGGR))
 		zlog_debug("%s: Release the aggregator Address(%pI4/%d)",
 			   __func__, &aggr->p.prefix, aggr->p.prefixlen);
-	hash_free(aggr->match_extnl_hash);
-	aggr->match_extnl_hash = NULL;
 
 	XFREE(MTYPE_OSPF_EXTERNAL_RT_AGGR, aggr);
 }
@@ -983,13 +980,9 @@ static void ospf_handle_external_aggr_update(struct ospf *ospf)
 			aggr->action = OSPF_ROUTE_AGGR_NONE;
 			ospf_external_aggr_delete(ospf, rn);
 
-			if (OSPF_EXTERNAL_RT_COUNT(aggr))
-				hash_clean(
-					aggr->match_extnl_hash,
-					(void *)ospf_aggr_handle_external_info);
-
-			hash_free(aggr->match_extnl_hash);
-			XFREE(MTYPE_OSPF_EXTERNAL_RT_AGGR, aggr);
+			hash_clean_and_free(
+				&aggr->match_extnl_hash,
+				(void *)ospf_aggr_handle_external_info);
 
 		} else if (aggr->action == OSPF_ROUTE_AGGR_MODIFY) {
 
@@ -1047,9 +1040,9 @@ static void ospf_handle_external_aggr_update(struct ospf *ospf)
 	}
 }
 
-static void ospf_asbr_external_aggr_process(struct thread *thread)
+static void ospf_asbr_external_aggr_process(struct event *thread)
 {
-	struct ospf *ospf = THREAD_ARG(thread);
+	struct ospf *ospf = EVENT_ARG(thread);
 	int operation = 0;
 
 	ospf->t_external_aggr = NULL;
@@ -1091,7 +1084,7 @@ static void ospf_external_aggr_timer(struct ospf *ospf,
 				zlog_debug(
 					"%s, Restarting Aggregator delay timer.",
 					__func__);
-			THREAD_OFF(ospf->t_external_aggr);
+			EVENT_OFF(ospf->t_external_aggr);
 		}
 	}
 
@@ -1100,8 +1093,8 @@ static void ospf_external_aggr_timer(struct ospf *ospf,
 			   __func__, ospf->aggr_delay_interval);
 
 	ospf->aggr_action = operation;
-	thread_add_timer(master, ospf_asbr_external_aggr_process, ospf,
-			 ospf->aggr_delay_interval, &ospf->t_external_aggr);
+	event_add_timer(master, ospf_asbr_external_aggr_process, ospf,
+			ospf->aggr_delay_interval, &ospf->t_external_aggr);
 }
 
 int ospf_asbr_external_aggregator_set(struct ospf *ospf, struct prefix_ipv4 *p,

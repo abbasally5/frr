@@ -982,6 +982,12 @@ int pim_if_add_vif(struct interface *ifp, bool ispimreg, bool is_vxlan_term)
 		zlog_warn("%s: ifindex=%d < 1 on interface %s", __func__,
 			  ifp->ifindex, ifp->name);
 		return -2;
+	} else if ((ifp->ifindex == 0) &&
+		   ((strncmp(ifp->name, "pimreg", 6)) &&
+		    (strncmp(ifp->name, "pim6reg", 7)))) {
+		zlog_warn("%s: ifindex=%d == 0 on interface %s", __func__,
+			  ifp->ifindex, ifp->name);
+		return -2;
 	}
 
 	ifaddr = pim_ifp->primary_address;
@@ -1534,8 +1540,10 @@ void pim_if_create_pimreg(struct pim_instance *pim)
 					       pim->vrf->name);
 		pim->regiface->ifindex = PIM_OIF_PIM_REGISTER_VIF;
 
-		pim_if_new(pim->regiface, false, false, true,
-			false /*vxlan_term*/);
+		if (!pim->regiface->info)
+			pim_if_new(pim->regiface, false, false, true,
+				   false /*vxlan_term*/);
+
 		/*
 		 * On vrf moves we delete the interface if there
 		 * is nothing going on with it.  We cannot have
