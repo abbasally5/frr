@@ -27,20 +27,20 @@ extern "C" {
 /* The following options disable specific command line options that
  * are not applicable for a particular daemon.
  */
-#define FRR_NO_PRIVSEP		(1 << 0)
-#define FRR_NO_TCPVTY		(1 << 1)
-#define FRR_LIMITED_CLI		(1 << 2)
-#define FRR_NO_SPLIT_CONFIG	(1 << 3)
-#define FRR_NO_PID		(1 << 4)
-#define FRR_NO_CFG_PID_DRY	(FRR_NO_PID | FRR_NO_SPLIT_CONFIG)
-#define FRR_NO_ZCLIENT		(1 << 5)
+#define FRR_NO_PRIVSEP	    (1 << 0)
+#define FRR_NO_TCPVTY	    (1 << 1)
+#define FRR_LIMITED_CLI	    (1 << 2)
+#define FRR_NO_SPLIT_CONFIG (1 << 3)
+#define FRR_NO_PID	    (1 << 4)
+#define FRR_NO_CFG_PID_DRY  (FRR_NO_PID | FRR_NO_SPLIT_CONFIG)
+#define FRR_NO_ZCLIENT	    (1 << 5)
 /* If FRR_DETACH_LATER is used, the daemon will keep its parent running
  * until frr_detach() is called.  Normally "somedaemon -d" returns once the
  * main event loop is reached in the daemon;  use this for extra startup bits.
  *
  * Does nothing if -d isn't used.
  */
-#define FRR_DETACH_LATER	(1 << 6)
+#define FRR_DETACH_LATER (1 << 6)
 /* If FRR_MANUAL_VTY_START is used, frr_run() will not automatically start
  * listening on for vty connection (either TCP or Unix socket based). The daemon
  * is responsible for calling frr_vty_serv() itself.
@@ -66,10 +66,10 @@ DECLARE_DLIST(log_args, struct log_arg, itm);
 #define ZEBRA_TCP_PORT 2600
 
 #define ZEBRA_VTY_PORT 2601
-#define RIP_VTY_PORT 2602
+#define RIP_VTY_PORT   2602
 #define RIPNG_VTY_PORT 2603
-#define OSPF_VTY_PORT 2604
-#define BGP_VTY_PORT 2605
+#define OSPF_VTY_PORT  2604
+#define BGP_VTY_PORT   2605
 #define OSPF6_VTY_PORT 2606
 
 /* Default API server port to accept connection request from client-side.
@@ -77,23 +77,23 @@ DECLARE_DLIST(log_args, struct log_arg, itm);
  */
 #define OSPF_API_SYNC_PORT 2607
 
-#define ISISD_VTY_PORT 2608
-#define BABEL_VTY_PORT 2609
-#define NHRP_VTY_PORT 2610
-#define PIMD_VTY_PORT 2611
-#define LDP_VTY_PORT 2612
-#define EIGRP_VTY_PORT 2613
-#define SHARP_VTY_PORT 2614
-#define PBR_VTY_PORT 2615
-#define STATIC_VTY_PORT 2616
-#define BFDD_VTY_PORT 2617
+#define ISISD_VTY_PORT	 2608
+#define BABEL_VTY_PORT	 2609
+#define NHRP_VTY_PORT	 2610
+#define PIMD_VTY_PORT	 2611
+#define LDP_VTY_PORT	 2612
+#define EIGRP_VTY_PORT	 2613
+#define SHARP_VTY_PORT	 2614
+#define PBR_VTY_PORT	 2615
+#define STATIC_VTY_PORT	 2616
+#define BFDD_VTY_PORT	 2617
 #define FABRICD_VTY_PORT 2618
-#define VRRP_VTY_PORT 2619
+#define VRRP_VTY_PORT	 2619
 
 /* default port for FPM connections */
 #define FPM_DEFAULT_PORT 2620
 
-#define PATH_VTY_PORT 2621
+#define PATH_VTY_PORT  2621
 #define PIM6D_VTY_PORT 2622
 #define MGMTD_VTY_PORT 2623
 /* Registry of daemons' port defaults */
@@ -131,6 +131,7 @@ struct frr_daemon_info {
 	const char *module_path;
 	const char *script_path;
 	char **state_paths;
+	const char *tmp_path;
 
 	const char *pathspace;
 	bool zpathspace;
@@ -167,10 +168,10 @@ struct frr_daemon_info {
  * daemon should have one of these.
  */
 #define FRR_DAEMON_INFO(execname, constname, ...)                              \
-	static struct frr_daemon_info execname##_di = {.name = #execname,      \
-						       .logname = #constname,  \
-						       .module = THIS_MODULE,  \
-						       __VA_ARGS__};           \
+	static struct frr_daemon_info execname##_di = { .name = #execname,     \
+							.logname = #constname, \
+							.module = THIS_MODULE, \
+							__VA_ARGS__ };         \
 	FRR_COREMOD_SETUP(.name = #execname,                                   \
 			  .description = #execname " daemon",                  \
 			  .version = FRR_VERSION, );                           \

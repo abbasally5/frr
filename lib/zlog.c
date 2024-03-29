@@ -54,15 +54,16 @@
 #include "libfrr_trace.h"
 #include "frrevent.h"
 
-DEFINE_MTYPE_STATIC(LIB, LOG_MESSAGE,  "log message");
-DEFINE_MTYPE_STATIC(LIB, LOG_TLSBUF,   "log thread-local buffer");
+DEFINE_MTYPE_STATIC(LIB, LOG_MESSAGE, "log message");
+DEFINE_MTYPE_STATIC(LIB, LOG_TLSBUF, "log thread-local buffer");
 
-DEFINE_HOOK(zlog_init, (const char *progname, const char *protoname,
-			unsigned short instance, uid_t uid, gid_t gid),
-		       (progname, protoname, instance, uid, gid));
+DEFINE_HOOK(zlog_init,
+	    (const char *progname, const char *protoname,
+	     unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir),
+	    (progname, protoname, instance, uid, gid, tmpdir));
 DEFINE_KOOH(zlog_fini, (), ());
 DEFINE_HOOK(zlog_aux_init, (const char *prefix, int prio_min),
-			   (prefix, prio_min));
+	    (prefix, prio_min));
 
 char zlog_prefix[128];
 size_t zlog_prefixsz;
@@ -161,8 +162,8 @@ struct zlog_msg {
 #define CAN_DO_TLS 1
 #endif
 
-#define TLS_LOG_BUF_SIZE	8192
-#define TLS_LOG_MAXMSG		64
+#define TLS_LOG_BUF_SIZE 8192
+#define TLS_LOG_MAXMSG	 64
 
 struct zlog_tls {
 	char *mmbuf;
@@ -205,9 +206,9 @@ static inline void zlog_tls_set(struct zlog_tls *val)
 	pthread_setspecific(zlog_tls_key, val);
 }
 #else
-# ifndef thread_local
-#  define thread_local __thread
-# endif
+#ifndef thread_local
+#define thread_local __thread
+#endif
 
 static thread_local struct zlog_tls *zlog_tls_var
 	__attribute__((tls_model("initial-exec")));
@@ -280,8 +281,8 @@ void zlog_tls_buffer_init(void)
 	mmfd = openat(zlog_tmpdirfd, mmpath,
 		      O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
 	if (mmfd < 0) {
-		zlog_err("failed to open thread log buffer \"%s\": %s",
-			 mmpath, strerror(errno));
+		zlog_err("failed to open thread log buffer \"%s\": %s", mmpath,
+			 strerror(errno));
 		goto out_anon;
 	}
 	fchown(mmfd, zlog_uid, zlog_gid);
@@ -290,17 +291,17 @@ void zlog_tls_buffer_init(void)
 	if (posix_fallocate(mmfd, 0, TLS_LOG_BUF_SIZE) != 0)
 	/* note next statement is under above if() */
 #endif
-	if (ftruncate(mmfd, TLS_LOG_BUF_SIZE) < 0) {
-		zlog_err("failed to allocate thread log buffer \"%s\": %s",
-			 mmpath, strerror(errno));
-		goto out_anon_unlink;
-	}
+		if (ftruncate(mmfd, TLS_LOG_BUF_SIZE) < 0) {
+			zlog_err("failed to allocate thread log buffer \"%s\": %s",
+				 mmpath, strerror(errno));
+			goto out_anon_unlink;
+		}
 
 	zlog_tls->mmbuf = mmap(NULL, TLS_LOG_BUF_SIZE, PROT_READ | PROT_WRITE,
-			      MAP_SHARED, mmfd, 0);
+			       MAP_SHARED, mmfd, 0);
 	if (zlog_tls->mmbuf == MAP_FAILED) {
-		zlog_err("failed to mmap thread log buffer \"%s\": %s",
-			 mmpath, strerror(errno));
+		zlog_err("failed to mmap thread log buffer \"%s\": %s", mmpath,
+			 strerror(errno));
 		goto out_anon_unlink;
 	}
 	zlog_tls->do_unlink = true;
@@ -318,7 +319,7 @@ out_anon:
 #define MAP_ANONYMOUS MAP_ANON
 #endif
 	zlog_tls->mmbuf = mmap(NULL, TLS_LOG_BUF_SIZE, PROT_READ | PROT_WRITE,
-			      MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+			       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
 	if (!zlog_tls->mmbuf) {
 		zlog_err("failed to anonymous-mmap thread log buffer: %s",
@@ -685,8 +686,8 @@ static void zlog_backtrace_msg(const struct xref_logmsg *xref, int prio)
 		     tc->xref->xref.line);
 }
 
-void vzlogx(const struct xref_logmsg *xref, int prio,
-	    const char *fmt, va_list ap)
+void vzlogx(const struct xref_logmsg *xref, int prio, const char *fmt,
+	    va_list ap)
 {
 	struct zlog_tls *zlog_tls = zlog_tls_get();
 
@@ -886,8 +887,8 @@ void zlog_msg_args(struct zlog_msg *msg, size_t *hdrlen, size_t *n_argpos,
 		*argpos = msg->argpos;
 }
 
-#define ZLOG_TS_FORMAT		(ZLOG_TS_ISO8601 | ZLOG_TS_LEGACY)
-#define ZLOG_TS_FLAGS		~ZLOG_TS_PREC
+#define ZLOG_TS_FORMAT (ZLOG_TS_ISO8601 | ZLOG_TS_LEGACY)
+#define ZLOG_TS_FLAGS  ~ZLOG_TS_PREC
 
 size_t zlog_msg_ts(struct zlog_msg *msg, struct fbuf *out, uint32_t flags)
 {
@@ -906,16 +907,15 @@ size_t zlog_msg_ts(struct zlog_msg *msg, struct fbuf *out, uint32_t flags)
 		else
 			localtime_r(&msg->ts.tv_sec, &tm);
 
-		strftime(msg->ts_str, sizeof(msg->ts_str),
-			 "%Y-%m-%dT%H:%M:%S", &tm);
+		strftime(msg->ts_str, sizeof(msg->ts_str), "%Y-%m-%dT%H:%M:%S",
+			 &tm);
 
 		if (flags & ZLOG_TS_UTC) {
 			msg->ts_zonetail[0] = 'Z';
 			msg->ts_zonetail[1] = '\0';
 		} else
 			snprintfrr(msg->ts_zonetail, sizeof(msg->ts_zonetail),
-				   "%+03d:%02d",
-				   (int)(tm.tm_gmtoff / 3600),
+				   "%+03d:%02d", (int)(tm.tm_gmtoff / 3600),
 				   (int)(labs(tm.tm_gmtoff) / 60) % 60);
 
 		msg->ts_dot = msg->ts_str + strlen(msg->ts_str);
@@ -1086,51 +1086,52 @@ void zlog_aux_init(const char *prefix, int prio_min)
 }
 
 void zlog_init(const char *progname, const char *protoname,
-	       unsigned short instance, uid_t uid, gid_t gid)
+	       unsigned short instance, uid_t uid, gid_t gid, const char *tmpdir)
 {
+	zlog_err("tmpdir: %s", tmpdir);
 	zlog_uid = uid;
 	zlog_gid = gid;
 	zlog_instance = instance;
+	const char *tmp_base_dir = tmpdir ? tmpdir : TMPBASEDIR;
+	zlog_err("tmp_base_dir: %s", tmpdir);
 
 	if (instance) {
 		snprintfrr(zlog_tmpdir, sizeof(zlog_tmpdir), "%s/%s-%d.%ld",
-			   TMPBASEDIR, progname, instance, (long)getpid());
+			   tmp_base_dir, progname, instance, (long)getpid());
 
 		zlog_prefixsz = snprintfrr(zlog_prefix, sizeof(zlog_prefix),
 					   "%s[%d]: ", protoname, instance);
 	} else {
 		snprintfrr(zlog_tmpdir, sizeof(zlog_tmpdir), "%s/%s.%ld",
-			   TMPBASEDIR, progname, (long)getpid());
+			   tmp_base_dir, progname, (long)getpid());
 
 		zlog_prefixsz = snprintfrr(zlog_prefix, sizeof(zlog_prefix),
 					   "%s: ", protoname);
 	}
 
-	if (mkdir(TMPBASEDIR, 0700) != 0) {
+	if (mkdir(tmp_base_dir, 0700) != 0) {
 		if (errno != EEXIST) {
-			zlog_err("failed to mkdir \"%s\": %s",
-				 TMPBASEDIR, strerror(errno));
+			zlog_err("failed to mkdir \"%s\": %s", TMPBASEDIR,
+				 strerror(errno));
 			goto out_warn;
 		}
 	}
 	chown(TMPBASEDIR, zlog_uid, zlog_gid);
 
 	if (mkdir(zlog_tmpdir, 0700) != 0) {
-		zlog_err("failed to mkdir \"%s\": %s",
-			 zlog_tmpdir, strerror(errno));
+		zlog_err("failed to mkdir \"%s\": %s", zlog_tmpdir,
+			 strerror(errno));
 		goto out_warn;
 	}
 
 #ifdef O_PATH
-	zlog_tmpdirfd = open(zlog_tmpdir,
-			     O_PATH | O_RDONLY | O_CLOEXEC);
+	zlog_tmpdirfd = open(zlog_tmpdir, O_PATH | O_RDONLY | O_CLOEXEC);
 #else
-	zlog_tmpdirfd = open(zlog_tmpdir,
-			     O_DIRECTORY | O_RDONLY | O_CLOEXEC);
+	zlog_tmpdirfd = open(zlog_tmpdir, O_DIRECTORY | O_RDONLY | O_CLOEXEC);
 #endif
 	if (zlog_tmpdirfd < 0) {
-		zlog_err("failed to open \"%s\": %s",
-			 zlog_tmpdir, strerror(errno));
+		zlog_err("failed to open \"%s\": %s", zlog_tmpdir,
+			 strerror(errno));
 		goto out_warn;
 	}
 
@@ -1140,12 +1141,14 @@ void zlog_init(const char *progname, const char *protoname,
 	chown(zlog_tmpdir, zlog_uid, zlog_gid);
 #endif
 
-	hook_call(zlog_init, progname, protoname, instance, uid, gid);
+	hook_call(zlog_init, progname, protoname, instance, uid, gid,
+		  tmp_base_dir);
 	return;
 
 out_warn:
 	zlog_err("crashlog and per-thread log buffering unavailable!");
-	hook_call(zlog_init, progname, protoname, instance, uid, gid);
+	hook_call(zlog_init, progname, protoname, instance, uid, gid,
+		  tmp_base_dir);
 }
 
 void zlog_fini(void)
@@ -1157,7 +1160,7 @@ void zlog_fini(void)
 		zlog_tmpdirfd = -1;
 
 		if (rmdir(zlog_tmpdir))
-			zlog_err("failed to rmdir \"%s\": %s",
-				 zlog_tmpdir, strerror(errno));
+			zlog_err("failed to rmdir \"%s\": %s", zlog_tmpdir,
+				 strerror(errno));
 	}
 }
